@@ -289,7 +289,7 @@ in der <code>.htaccess</code> einzutragen.</p>
             '|<loc>(https?://[^/]+)(/[^<]*)</loc>|',
             function($m) {
                 $origin  = $m[1]; // z.B. http://localhost
-                $path    = $m[2]; // z.B. /stb-hader/%C3%9Cber%20unsere%20Kanzlei/Historie.html
+                $path    = $m[2]; // z.B. /mein-pfad/%C3%9Cber%20unsere%20Firma/Historie.html
 
                 // URL_BASE entfernen
                 $relative = $path;
@@ -368,7 +368,7 @@ in der <code>.htaccess</code> einzutragen.</p>
         // URL-dekodieren: %C3%9Cber%20unsere → Über unsere
         $clean = urldecode($path);
 
-        // URL_BASE entfernen: /stb-hader/Über unsere Kanzlei.html → /Über unsere Kanzlei.html
+        // URL_BASE entfernen: /mein-pfad/Über unsere Firma.html → /Über unsere Firma.html
         if (defined('URL_BASE') && URL_BASE !== '/') {
             $base = rtrim(URL_BASE, '/');
             if (strpos($clean, $base) === 0) {
@@ -465,3 +465,4 @@ in der <code>.htaccess</code> einzutragen.</p>
         return $candidate;
     }
 }
+
