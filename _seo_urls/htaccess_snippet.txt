@@ -1,0 +1,32 @@
+# seo_urls Plugin – .htaccess Änderungen
+# ========================================
+#
+# Folgende drei Blöcke in die bestehende moziloCMS .htaccess einfügen:
+#
+# 1) NACH der Zeile "RewriteRule \.html$ index\.php [QSA,L]"
+#    folgende Zeile hinzufügen (sitemap.xml durch Plugin ausliefern):
+#
+#      RewriteRule ^sitemap\.xml$ index.php [L,QSA]
+#
+# 2) Am Ende, VOR "# mozilo_end", folgende drei Zeilen hinzufügen
+#    (Catch-All für Slug-URLs, Admin-Bereich bleibt unangetastet):
+#
+#      RewriteCond %{REQUEST_FILENAME} !-f
+#      RewriteCond %{REQUEST_FILENAME} !-d
+#      RewriteRule ^(.*)$ index.php [QSA,L]
+#
+# ========================================
+# Fertige .htaccess sieht dann so aus:
+# ========================================
+#
+# # mozilo generated not change from here to mozilo_end
+# Options -Indexes
+# RewriteEngine On
+# RewriteBase /ihr-verzeichnis
+# RewriteRule ^(.*)/mod_rewrite_t_e_s_t\.html$ $1/index\.php?moderewrite=ok [L]
+# RewriteRule \.html$ index\.php [QSA,L]
+# RewriteRule ^sitemap\.xml$ index.php [L,QSA]
+# RewriteCond %{REQUEST_FILENAME} !-f
+# RewriteCond %{REQUEST_FILENAME} !-d
+# RewriteRule ^(.*)$ index.php [QSA,L]
+# # mozilo_end

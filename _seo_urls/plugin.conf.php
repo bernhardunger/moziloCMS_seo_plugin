@@ -1,0 +1,1 @@
+a:2:{s:12:"plugin_first";s:4:"true";s:13:"debug_enabled";s:5:"false";}
