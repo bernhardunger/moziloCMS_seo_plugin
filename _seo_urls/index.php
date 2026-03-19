@@ -43,7 +43,7 @@ class _seo_urls extends Plugin {
             // Debug-Ausgabe: /?seo_debug=1  (nur wenn im Admin aktiviert!)
             if (!empty($_GET['seo_debug']) && $this->settings->get('debug_enabled') === 'true') {
                 header('Content-Type: text/plain; charset=utf-8');
-                echo "=== seo_urls Plugin v2 – Slug-Map ===\n\n";
+                echo "=== seo_urls Plugin – Slug-Map ===\n\n";
                 foreach (self::$catBySlug as $catSlug => $catRaw) {
                     $catDecoded = urldecode($catRaw);
                     echo "  [{$catDecoded}] → /{$catSlug}/\n";
@@ -465,4 +465,3 @@ in der <code>.htaccess</code> einzutragen.</p>
         return $candidate;
     }
 }
-
