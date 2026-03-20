@@ -25,7 +25,7 @@ Wandelt Kategorie- und Seitennamen in saubere, Google-freundliche URL-Slugs um.
 
 ## Funktionsweise
 
-moziloCMS 3 liefert bereits lesbare Pfad-URLs (`/Über Uns/Team/`), diese enthalten jedoch Umlaute und Leerzeichen, die von Google nicht korrekt indexiert werden. Das Plugin greift als `plugin_first` ein, **bevor** moziloCMS den Pfad selbst auswertet:
+moziloCMS 3 liefert bereits lesbare Pfad-URLs (`/Über Uns/Team/`), diese enthalten jedoch Umlaute und Leerzeichen, die von Google nicht korrekt indexiert werden. Das Plugin greift als `plugin_first` ein, **bevor** moziloCMS den Pfad selbst auswertet, falls mehrere Plugins mit plugin_first aktiv sind, wird das Plugin ducht den Unterstrich im Verzeichnisnamen als erstes geladen (siehe "cms\DefaultFunc.php"):
 
 ```
 Browser: GET /ueber-uns/team/
