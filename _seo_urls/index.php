@@ -4,7 +4,7 @@ if(!defined('IS_CMS')) die();
 /**
  * Plugin:   seo_urls
  * @author:  B.Unger
- * @version: v1.0.0
+ * @version: v1.0.2
  * @license: GPL
  *
  * Wandelt Kategorie- und Seitennamen in SEO-freundliche URL-Slugs um.
@@ -121,7 +121,7 @@ in der <code>.htaccess</code> einzutragen.</p>
 ';
 
         $info = array(
-            '<b>seo_urls</b> v1.0.0',
+            '<b>seo_urls</b> v1.0.2',
             '2.0 / 3.0',
             $description,
             '',
