@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+__MACOSX/
+
+# Windows
+Thumbs.db
+
+# PHP / moziloCMS
+*.conf.php.bak
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# ZIP-Releases (werden über GitHub Releases bereitgestellt)
+*.zip
