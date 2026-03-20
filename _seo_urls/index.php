@@ -43,7 +43,7 @@ class _seo_urls extends Plugin {
             // Debug-Ausgabe: /?seo_debug=1  (nur wenn im Admin aktiviert!)
             if (!empty($_GET['seo_debug']) && $this->settings->get('debug_enabled') === 'true') {
                 header('Content-Type: text/plain; charset=utf-8');
-                echo "=== seo_urls Plugin – Slug-Map ===\n\n";
+                echo "=== seo_urls Plugin v2 – Slug-Map ===\n\n";
                 foreach (self::$catBySlug as $catSlug => $catRaw) {
                     $catDecoded = urldecode($catRaw);
                     echo "  [{$catDecoded}] → /{$catSlug}/\n";
@@ -279,17 +279,22 @@ in der <code>.htaccess</code> einzutragen.</p>
         $sitemapFile = BASE_DIR . 'sitemap.xml';
 
         if (!file_exists($sitemapFile)) {
-            return; // Datei nicht vorhanden → Apache liefert 404
+            return;
         }
 
         $xml = file_get_contents($sitemapFile);
 
+        // Origin immer aus dem aktuellen Request bauen (nicht aus der Datei)
+        // → stellt sicher dass www. korrekt übernommen wird
+        $scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $host   = $_SERVER['HTTP_HOST']; // z.B. www.steuerkanzlei-hader.de
+        $currentOrigin = $scheme . '://' . $host;
+
         // Alle <loc>-URLs umschreiben
         $xml = preg_replace_callback(
             '|<loc>(https?://[^/]+)(/[^<]*)</loc>|',
-            function($m) {
-                $origin  = $m[1]; // z.B. http://localhost
-                $path    = $m[2]; // z.B. /mein-pfad/%C3%9Cber%20unsere%20Firma/Historie.html
+            function($m) use ($currentOrigin) {
+                $path = $m[2];
 
                 // URL_BASE entfernen
                 $relative = $path;
@@ -315,11 +320,11 @@ in der <code>.htaccess</code> einzutragen.</p>
                 $slugUrl = self::buildSlugUrl($catName, $pageName);
 
                 if ($slugUrl === null) {
-                    return $m[0]; // kein Mapping → original behalten
+                    return $m[0];
                 }
 
                 $base = defined('URL_BASE') ? rtrim(URL_BASE, '/') : '';
-                return '<loc>' . $origin . $base . $slugUrl . '</loc>';
+                return '<loc>' . $currentOrigin . $base . $slugUrl . '</loc>';
             },
             $xml
         );
@@ -368,7 +373,7 @@ in der <code>.htaccess</code> einzutragen.</p>
         // URL-dekodieren: %C3%9Cber%20unsere → Über unsere
         $clean = urldecode($path);
 
-        // URL_BASE entfernen: /mein-pfad/Über unsere Firma.html → /Über unsere Firma.html
+        // URL_BASE entfernen: /stb-hader/Über unsere Kanzlei.html → /Über unsere Kanzlei.html
         if (defined('URL_BASE') && URL_BASE !== '/') {
             $base = rtrim(URL_BASE, '/');
             if (strpos($clean, $base) === 0) {
