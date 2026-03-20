@@ -287,7 +287,7 @@ in der <code>.htaccess</code> einzutragen.</p>
         // Origin immer aus dem aktuellen Request bauen (nicht aus der Datei)
         // → stellt sicher dass www. korrekt übernommen wird
         $scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
-        $host   = $_SERVER['HTTP_HOST']; // z.B. www.steuerkanzlei-hader.de
+        $host   = $_SERVER['HTTP_HOST']; // z.B. www.meine-donmain.de
         $currentOrigin = $scheme . '://' . $host;
 
         // Alle <loc>-URLs umschreiben
