@@ -4,7 +4,7 @@ if(!defined('IS_CMS')) die();
 /**
  * Plugin:   seo_urls
  * @author:  B.Unger
- * @version: v1.1.0
+ * @version: v1.1.1
  * @license: GPL
  *
  * Wandelt Kategorie- und Seitennamen in SEO-freundliche URL-Slugs um.
@@ -62,7 +62,7 @@ class _seo_urls extends Plugin {
             // Debug-Ausgabe: /?seo_debug=1  (nur wenn im Admin aktiviert!)
             if (!empty($_GET['seo_debug']) && $this->settings->get('debug_enabled') === 'true') {
                 header('Content-Type: text/plain; charset=utf-8');
-                echo "=== seo_urls Plugin v1.1.0 – Slug-Map ===\n\n";
+                echo "=== seo_urls Plugin v1.1.1 – Slug-Map ===\n\n";
                 foreach (self::$catBySlug as $catSlug => $catRaw) {
                     $catDecoded = urldecode($catRaw);
                     echo "  [{$catDecoded}] → /{$catSlug}/\n";
@@ -144,7 +144,7 @@ in der <code>.htaccess</code> einzutragen.</p>
 ';
 
         $info = array(
-            '<b>seo_urls</b> v1.1.0',
+            '<b>seo_urls</b> v1.1.1',
             '2.0 / 3.0',
             $description,
             '',
