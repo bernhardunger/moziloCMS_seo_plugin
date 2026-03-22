@@ -4,7 +4,7 @@ if(!defined('IS_CMS')) die();
 /**
  * Plugin:   seo_urls
  * @author:  B.Unger
- * @version: v1.1.1
+ * @version: v1.1.2  (siehe Klassenkonstante VERSION)
  * @license: GPL
  *
  * Wandelt Kategorie- und Seitennamen in SEO-freundliche URL-Slugs um.
@@ -36,6 +36,13 @@ class _seo_urls extends Plugin {
     private static $mapsBuilt  = false;
 
     /**
+     * Plugin-Version als Klassenkonstante.
+     * Einzige Stelle die bei einem Versions-Update geändert werden muss —
+     * alle anderen Stellen im Code referenzieren self::VERSION.
+     */
+    const VERSION = 'v1.1.2';
+
+    /**
      * Pfade die nie von diesem Plugin angefasst werden dürfen.
      * Als Konstante definiert → wird einmalig kompiliert, nicht bei jedem Request neu gebaut.
      */
@@ -55,14 +62,20 @@ class _seo_urls extends Plugin {
     }
 
     function getPluginContent($value) {
-        // Wird von moziloCMS für plugin_first-Plugins aufgerufen
+        // moziloCMS ruft getPluginContent('plugin_first') genau einmal pro Request auf,
+        // noch bevor createGetCatPageFromModRewrite() die $_GET-Parameter auswertet.
+        // Das gibt uns die Möglichkeit, $_GET['cat'] und $_GET['page'] selbst zu setzen
+        // bevor das CMS die Seite rendert.
         if ($value === 'plugin_first') {
+
+            // Slug-Maps ein einziges Mal pro Request aufbauen (interner Guard in buildMaps())
             self::buildMaps();
 
             // Debug-Ausgabe: /?seo_debug=1  (nur wenn im Admin aktiviert!)
+            // Gibt das gesamte Slug-Mapping als Klartext aus und beendet die Ausführung.
             if (!empty($_GET['seo_debug']) && $this->settings->get('debug_enabled') === 'true') {
                 header('Content-Type: text/plain; charset=utf-8');
-                echo "=== seo_urls Plugin v1.1.1 – Slug-Map ===\n\n";
+                echo "=== seo_urls Plugin " . self::VERSION . " – Slug-Map ===\n\n";
                 foreach (self::$catBySlug as $catSlug => $catRaw) {
                     $catDecoded = urldecode($catRaw);
                     echo "  [{$catDecoded}] → /{$catSlug}/\n";
@@ -74,8 +87,12 @@ class _seo_urls extends Plugin {
                 exit;
             }
 
+            // Eingehende URL auswerten: $_GET setzen oder 301-Redirect auslösen
             self::handleRequest();
 
+            // Output-Buffer registrieren: rewriteOutput() wird aufgerufen sobald moziloCMS
+            // den fertigen HTML-String an den Browser übergeben würde — wir fangen ihn ab
+            // und schreiben alle internen href/action-Attribute auf Slug-URLs um.
             // rewriteOutput und rewriteCallback müssen public static bleiben,
             // da ob_start() keinen Zugriff auf private/protected Methoden hat.
             ob_start(array('_seo_urls', 'rewriteOutput'));
@@ -144,7 +161,7 @@ in der <code>.htaccess</code> einzutragen.</p>
 ';
 
         $info = array(
-            '<b>seo_urls</b> v1.1.1',
+            '<b>seo_urls</b> ' . self::VERSION,
             '2.0 / 3.0',
             $description,
             '',
@@ -160,33 +177,49 @@ in der <code>.htaccess</code> einzutragen.</p>
     // -----------------------------------------------------------------------
 
     private static function buildMaps() {
+        // Guard: Maps werden nur einmal pro PHP-Request aufgebaut.
+        // moziloCMS kann getPluginContent() theoretisch mehrfach aufrufen —
+        // der Flag verhindert doppeltes Einlesen der Kategorie-/Seitenstruktur.
         if (self::$mapsBuilt) {
             return;
         }
         self::$mapsBuilt = true;
 
+        // $CatPage ist das zentrale moziloCMS-Objekt für Kategorie- und Seitenzugriffe.
+        // Es ist kein Singleton, sondern eine globale Variable die vom CMS-Core gesetzt wird.
         global $CatPage;
 
+        // EXT_HIDDEN einschließen, falls die Konstante definiert ist (moziloCMS 2.x).
+        // Versteckte Seiten sollen ebenfalls Slug-URLs erhalten.
         $pageTypes = array(EXT_PAGE);
         if (defined('EXT_HIDDEN')) {
             $pageTypes[] = EXT_HIDDEN;
         }
 
+        // Alle Kategorienamen vom CMS holen (URL-kodiert, z.B. "%C3%9Cber%20Uns")
         $cats = $CatPage->get_CatArray(false, false, $pageTypes);
 
         foreach ($cats as $catName) {
+            // CMS liefert Kategorienamen URL-kodiert → für slugify() dekodieren
             $catDecoded = urldecode($catName);
+
+            // Slug erzeugen und gegen bereits vergebene Kategorie-Slugs auf Kollision prüfen.
+            // self::$catBySlug wird als Hash-Set übergeben (Keys = vergebene Slugs).
             $catSlug = self::makeUnique(
                 self::slugify($catDecoded),
-                self::$catBySlug  // gesamtes Array übergeben, makeUnique nutzt Keys
+                self::$catBySlug
             );
 
-            self::$catBySlug[$catSlug]    = $catName;    // kodiert → für $_GET['cat']
-            self::$catToSlug[$catName]    = $catSlug;    // kodiert → slug (href-Matching)
-            self::$catToSlug[$catDecoded] = $catSlug;    // dekodiert → slug (fallback)
+            // Beide Richtungen speichern:
+            self::$catBySlug[$catSlug]    = $catName;    // slug       → kodierter Name (für $_GET['cat'])
+            self::$catToSlug[$catName]    = $catSlug;    // kodierter Name   → slug (href-Matching)
+            self::$catToSlug[$catDecoded] = $catSlug;    // dekodierter Name → slug (Fallback)
 
+            // Alle Seiten dieser Kategorie holen (ebenfalls URL-kodiert)
             $pages = $CatPage->get_PageArray($catName, $pageTypes, true);
 
+            // Lokales Hash-Set für Seiten-Slug-Kollisionen innerhalb dieser Kategorie.
+            // Seiten in verschiedenen Kategorien dürfen denselben Slug haben.
             $pageSlugsForCat = isset(self::$pageBySlug[$catSlug]) ? self::$pageBySlug[$catSlug] : array();
 
             foreach ($pages as $pageName) {
@@ -195,8 +228,12 @@ in der <code>.htaccess</code> einzutragen.</p>
                     self::slugify($pageDecoded),
                     $pageSlugsForCat  // nur innerhalb dieser Kategorie auf Kollision prüfen
                 );
-                $pageSlugsForCat[$pageSlug] = true;  // Hash-Set für makeUnique aktuell halten
+                // Hash-Set für den nächsten makeUnique()-Aufruf aktuell halten
+                $pageSlugsForCat[$pageSlug] = true;
 
+                // Vier Kombinationen kodiert/dekodiert speichern, damit Lookups in
+                // rewritePath() und handleRequest() unabhängig vom Kodierungszustand
+                // des eingehenden Strings immer einen Treffer landen.
                 self::$pageBySlug[$catSlug][$pageSlug]        = $pageName;  // für $_GET['page']
                 self::$pageToSlug[$catName][$pageName]        = $pageSlug;  // kodiert/kodiert
                 self::$pageToSlug[$catName][$pageDecoded]     = $pageSlug;  // kodiert/dekodiert
@@ -211,15 +248,19 @@ in der <code>.htaccess</code> einzutragen.</p>
     // -----------------------------------------------------------------------
 
     private static function handleRequest() {
+        // REQUEST_URI enthält den vollständigen Pfad inkl. Query-String,
+        // z.B. "/mozilo/ueber-uns/?foo=bar" — wir brauchen nur den Pfadteil.
         $uri = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '/';
 
-        // Query-String entfernen
+        // Query-String abschneiden: "/ueber-uns/?foo=bar" → "/ueber-uns/"
+        // strpos ist schneller als eine Regex und reicht hier vollkommen.
         $qpos = strpos($uri, '?');
         if ($qpos !== false) {
             $uri = substr($uri, 0, $qpos);
         }
 
-        // URL_BASE-Präfix entfernen
+        // URL_BASE-Präfix entfernen, falls moziloCMS in einem Unterverzeichnis läuft.
+        // Beispiel URL_BASE="/mozilo/": "/mozilo/ueber-uns/" → "/ueber-uns/"
         if (defined('URL_BASE') && URL_BASE !== '/' && strpos($uri, URL_BASE) === 0) {
             $uri = '/' . substr($uri, strlen(URL_BASE));
         }
@@ -452,7 +493,9 @@ in der <code>.htaccess</code> einzutragen.</p>
         $catName  = $parts[0];
         $pageName = isset($parts[1]) ? $parts[1] : null;
 
-        // Bereits ein Slug → nicht doppelt verarbeiten
+        // Bereits ein gültiger Slug (z.B. "ueber-uns") → Pfad wurde schon umgeschrieben,
+        // kein erneutes Lookup nötig. null signalisiert rewriteCallback() dass das
+        // Original-Attribut unverändert bleiben soll.
         if (self::isSlug($catName)) {
             return null;
         }
@@ -465,6 +508,8 @@ in der <code>.htaccess</code> einzutragen.</p>
     // -----------------------------------------------------------------------
 
     public static function buildSlugUrl($catName, $pageName) {
+        // Wenn die Kategorie nicht in der Map ist (unbekannter Name), gibt es keine
+        // Slug-URL → null zurückgeben damit der Aufrufer den Original-Link behält.
         if (!isset(self::$catToSlug[$catName])) {
             return null;
         }
@@ -499,11 +544,22 @@ in der <code>.htaccess</code> einzutragen.</p>
             'ñ' => 'n',  'ç' => 'c',
         );
 
+        // Schritt 1: Sonderzeichen ersetzen (ä→ae, ö→oe usw.)
         $text = str_replace(array_keys($map), array_values($map), $text);
+
+        // Schritt 2: Alles in Kleinbuchstaben (mb_ wegen möglicher Restzeichen > ASCII)
         $text = mb_strtolower($text, 'UTF-8');
+
+        // Schritt 3: Alles außer a-z, 0-9 durch einen Bindestrich ersetzen.
+        // Aufeinanderfolgende Sonderzeichen (z.B. "foo  bar") werden zu einem "-" zusammengefasst.
         $text = preg_replace('/[^a-z0-9]+/', '-', $text);
+
+        // Schritt 4: Führende und abschließende Bindestriche entfernen
+        // (entstehen z.B. wenn der Name mit einem Sonderzeichen beginnt oder endet)
         $text = trim($text, '-');
 
+        // Fallback für den unwahrscheinlichen Fall dass nach allen Transformationen
+        // ein leerer String übrig bleibt (z.B. Kategoriename bestand nur aus "---")
         return $text ? $text : 'seite';
     }
 
