@@ -78,6 +78,24 @@ RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^(.*)$ index.php [QSA,L]
 # mozilo_end
 ```
+#### .htaccess zusammengefasst 
+```
+Options -Indexes
+RewriteEngine On
+RewriteBase /
+RewriteCond %{HTTPS} off [OR]
+RewriteCond %{HTTP_HOST} !^www\. [NC]
+# !Domain-Namen anpassen!
+RewriteRule ^(.*)$ https://www.meine-domain.de/$1 [L,R=301]
+# mozilo generated - not change from here to mozilo_end
+RewriteRule ^(.*)/mod_rewrite_t_e_s_t\.html$ $1/index\.php?moderewrite=ok [L]
+RewriteRule \.html$ index\.php [QSA,L]
+RewriteRule ^sitemap\.xml$ index.php [L,QSA]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]
+# mozilo_end
+```
 
 ### 3. Plugin aktivieren
 
