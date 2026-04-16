@@ -4,7 +4,7 @@ if(!defined('IS_CMS')) die();
 /**
  * Plugin:   seo_urls
  * @author:  B.Unger
- * @version: v1.1.2  (siehe Klassenkonstante VERSION)
+ * @version: v1.2.0  (siehe Klassenkonstante VERSION)
  * @license: GPL
  *
  * Wandelt Kategorie- und Seitennamen in SEO-freundliche URL-Slugs um.
@@ -36,11 +36,25 @@ class _seo_urls extends Plugin {
     private static $mapsBuilt  = false;
 
     /**
+     * URL-kodierter Name der ersten CMS-Kategorie (= Homepage).
+     * Wird in handleRequest() genutzt, um /startseite/ → / zu redirecten.
+     */
+    private static $homeCatName = null;
+
+    /**
+     * Kanonischer Slug-Pfad der aktuellen Anfrage (z.B. '/kontakt/' oder '/kontakt/anfahrt/').
+     * Wird von handleRequest() gesetzt und in rewriteOutput() genutzt, um den
+     * <link rel="canonical">-Tag zu korrigieren — moziloCMS gibt bei Kategorie-Einstiegsseiten
+     * oft die erste Unterseite als Canonical aus statt der Kategorie-URL selbst.
+     */
+    private static $resolvedCanonicalPath = null;
+
+    /**
      * Plugin-Version als Klassenkonstante.
      * Einzige Stelle die bei einem Versions-Update geändert werden muss —
      * alle anderen Stellen im Code referenzieren self::VERSION.
      */
-    const VERSION = 'v1.1.2';
+    const VERSION = 'v1.2.0';
 
     /**
      * Pfade die nie von diesem Plugin angefasst werden dürfen.
@@ -199,6 +213,13 @@ in der <code>.htaccess</code> einzutragen.</p>
         // Alle Kategorienamen vom CMS holen (URL-kodiert, z.B. "%C3%9Cber%20Uns")
         $cats = $CatPage->get_CatArray(false, false, $pageTypes);
 
+        // Erste Kategorie = Homepage im CMS (moziloCMS-Konvention).
+        // Unabhängig vom tatsächlichen Namen ("Startseite", "Home", "Start" …)
+        // soll deren Slug-URL immer auf / umgeleitet werden.
+        if (!empty($cats)) {
+            self::$homeCatName = reset($cats);
+        }
+
         foreach ($cats as $catName) {
             // CMS liefert Kategorienamen URL-kodiert → für slugify() dekodieren
             $catDecoded = urldecode($catName);
@@ -304,6 +325,18 @@ in der <code>.htaccess</code> einzutragen.</p>
         // Sonderfall: /ueber-uns.html → 301 → /ueber-uns/
         // Ohne diesen Redirect wären /ueber-uns.html und /ueber-uns/ Duplicate Content für Google.
         if (self::isSlug($rawCat) && isset(self::$catBySlug[$rawCat])) {
+
+            // Homepage-Erkennung: Slug der ersten CMS-Kategorie ohne Unterseite → 301 auf /.
+            // Unabhängig vom tatsächlichen Namen ("Startseite", "Home", "Start" …) wird die
+            // Slug-URL der Homepage direkt auf / umgeleitet, damit kein Duplicate Content
+            // zwischen /startseite/ und / entsteht.
+            if (self::$homeCatName !== null && $rawPage === null &&
+                self::$catBySlug[$rawCat] === self::$homeCatName) {
+                $base = defined('URL_BASE') ? rtrim(URL_BASE, '/') : '';
+                header('Location: ' . $base . '/', true, 301);
+                exit;
+            }
+
             if ($hadHtmlSuffix) {
                 $catRaw  = self::$catBySlug[$rawCat];
                 $pageRaw = ($rawPage !== null && isset(self::$pageBySlug[$rawCat][$rawPage]))
@@ -321,9 +354,15 @@ in der <code>.htaccess</code> einzutragen.</p>
             if ($rawPage !== null) {
                 if (self::isSlug($rawPage) && isset(self::$pageBySlug[$rawCat][$rawPage])) {
                     $_GET['page'] = self::$pageBySlug[$rawCat][$rawPage];
+                    // Kanonischen Pfad für rewriteOutput() merken
+                    self::$resolvedCanonicalPath = '/' . $rawCat . '/' . $rawPage . '/';
                 } else {
                     $_GET['page'] = $rawPage;
+                    // Seite nicht in Slug-Map → kein Canonical-Override
                 }
+            } else {
+                // Nur Kategorie, keine Unterseite → Canonical = Kategorie-URL
+                self::$resolvedCanonicalPath = '/' . $rawCat . '/';
             }
 
             return;
@@ -337,6 +376,16 @@ in der <code>.htaccess</code> einzutragen.</p>
         $isDraft = isset($_GET['draft']) && $_GET['draft'] === 'true';
 
         if (!$isPost && !$isDraft && !self::isSlug($rawCat) && isset(self::$catToSlug[$rawCat])) {
+            // Homepage-Erkennung: Roher Name der ersten Kategorie (z.B. "Startseite") → 301 auf /.
+            // Fängt /Startseite.html und /Startseite/ ab, bevor der allgemeine Redirect
+            // auf /startseite/ feuert — verhindert die Redirect-Kette Startseite.html → /startseite/ → /.
+            if (self::$homeCatName !== null && $rawPage === null &&
+                $rawCat === urldecode(self::$homeCatName)) {
+                $base = defined('URL_BASE') ? rtrim(URL_BASE, '/') : '';
+                header('Location: ' . $base . '/', true, 301);
+                exit;
+            }
+
             $slugUrl = self::buildSlugUrl($rawCat, $rawPage);
             if ($slugUrl !== null) {
                 header('Location: ' . $slugUrl, true, 301);
@@ -446,6 +495,37 @@ in der <code>.htaccess</code> einzutragen.</p>
             array('_seo_urls', 'rewriteCallback'),
             $html
         );
+
+        // <link rel="canonical"> korrigieren.
+        // moziloCMS setzt bei Kategorie-Einstiegsseiten (z.B. /kontakt/) als Canonical
+        // oft die erste Unterseite (/Kontakt/Anfahrt.html) statt der Kategorie-URL selbst.
+        // rewriteCallback() überspringt absolute URLs (https?://) — der Canonical-Tag
+        // bleibt daher ohne diesen Block unkorrekt und verursacht GSC-Warnungen.
+        if (self::$resolvedCanonicalPath !== null) {
+            $rawHost = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
+            if (!preg_match('/^[a-zA-Z0-9.\-]+(:\d+)?$/', $rawHost)) {
+                $rawHost = '';
+            }
+            if ($rawHost !== '') {
+                $scheme        = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+                $base          = defined('URL_BASE') ? rtrim(URL_BASE, '/') : '';
+                $canonicalHref = $scheme . '://' . $rawHost . $base . self::$resolvedCanonicalPath;
+
+                $html = preg_replace_callback(
+                    '/<link\b[^>]*\brel=["\']canonical["\'][^>]*>/i',
+                    function ($m) use ($canonicalHref) {
+                        // href-Wert im Tag ersetzen, unabhängig von der Reihenfolge der Attribute
+                        return preg_replace(
+                            '/\bhref=["\'][^"\']*["\']/',
+                            'href="' . $canonicalHref . '"',
+                            $m[0]
+                        );
+                    },
+                    $html
+                );
+            }
+        }
+
         return $html;
     }
 
