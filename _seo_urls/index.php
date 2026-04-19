@@ -261,17 +261,22 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     // -----------------------------------------------------------------------
 
     private static function handleRequest() {
+        // REQUEST_URI enthält den vollständigen Pfad inkl. Query-String,
+        // z.B. "/mozilo/ueber-uns/?foo=bar" — wir brauchen nur den Pfadteil.
         $uri = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '/';
 
+        // Query-String abschneiden: "/ueber-uns/?foo=bar" → "/ueber-uns/"
         $qpos = strpos($uri, '?');
         if ($qpos !== false) {
             $uri = substr($uri, 0, $qpos);
         }
 
+        // URL_BASE-Präfix entfernen, falls moziloCMS in einem Unterverzeichnis läuft.
         if (defined('URL_BASE') && URL_BASE !== '/' && strpos($uri, URL_BASE) === 0) {
             $uri = '/' . substr($uri, strlen(URL_BASE));
         }
 
+        // .html-Endung merken BEVOR wir sie entfernen
         $hadHtmlSuffix = (bool) preg_match('/\.html$/i', $uri);
 
         $uri = self::stripHtmlSuffix($uri);
@@ -281,6 +286,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             return;
         }
 
+        // Segmente extrahieren
         $parts = array_values(array_filter(
             explode('/', $uri),
             function ($s) {
@@ -292,11 +298,13 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             return;
         }
 
+        // sitemap.xml on-the-fly umschreiben
         if (strtolower($parts[0]) === 'sitemap.xml') {
             self::rewriteSitemap();
             return;
         }
 
+        // Systempfade nie anfassen
         if (in_array(strtolower($parts[0]), self::SYSTEM_PATHS, true)) {
             return;
         }
@@ -304,56 +312,78 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
         $rawCat  = urldecode($parts[0]);
         $rawPage = isset($parts[1]) ? urldecode($parts[1]) : null;
 
-        // (A) Slug-URL → $_GET['cat'] / ['page'] setzen
         if (self::isSlug($rawCat) && isset(self::$catBySlug[$rawCat])) {
+            self::resolveSlugRequest($rawCat, $rawPage, $hadHtmlSuffix);
+        } else {
+            self::resolveRawCatRequest($rawCat, $rawPage);
+        }
+    }
 
-            // Homepage-Slug → 301 auf /
-            if (
-                self::$homeCatName !== null && $rawPage === null &&
-                self::$catBySlug[$rawCat] === self::$homeCatName
-            ) {
-                $base = defined('URL_BASE') ? rtrim(URL_BASE, '/') : '';
-                self::redirect($base . '/');
-                return;
-            }
-
-            // .html-Suffix → 301 auf Slug-URL
-            if ($hadHtmlSuffix) {
-                $catRaw  = self::$catBySlug[$rawCat];
-                $pageRaw = ($rawPage !== null && isset(self::$pageBySlug[$rawCat][$rawPage]))
-                    ? self::$pageBySlug[$rawCat][$rawPage]
-                    : $rawPage;
-                $slugUrl = self::buildSlugUrl($catRaw, $pageRaw);
-                if ($slugUrl !== null) {
-                    self::redirect($slugUrl);
-                    return;
-                }
-            }
-
-            $_GET['cat'] = self::$catBySlug[$rawCat];
-
-            if ($rawPage !== null) {
-                if (self::isSlug($rawPage) && isset(self::$pageBySlug[$rawCat][$rawPage])) {
-                    $_GET['page'] = self::$pageBySlug[$rawCat][$rawPage];
-                    self::$resolvedCanonicalPath = '/' . $rawCat . '/' . $rawPage . '/';
-                } else {
-                    $_GET['page'] = $rawPage;
-                }
-            } else {
-                self::$resolvedCanonicalPath = '/' . $rawCat . '/';
-            }
-
+    /**
+     * Verarbeitet eine eingehende Slug-URL (z.B. /ueber-uns/unser-team/).
+     * Setzt $_GET['cat'] und $_GET['page'] oder löst 301-Redirect aus bei:
+     *  - Homepage-Slug → /
+     *  - .html-Suffix → Slug-URL ohne Suffix
+     */
+    private static function resolveSlugRequest(
+        string $rawCat,
+        ?string $rawPage,
+        bool $hadHtmlSuffix
+    ): void {
+        // Homepage-Slug → 301 auf /
+        if (
+            self::$homeCatName !== null && $rawPage === null &&
+            self::$catBySlug[$rawCat] === self::$homeCatName
+        ) {
+            $base = defined('URL_BASE') ? rtrim(URL_BASE, '/') : '';
+            self::redirect($base . '/');
             return;
         }
 
-        // (B) Umlaut/Leerzeichen-Pfad → 301-Redirect
+        // .html-Suffix → 301 auf Slug-URL
+        if ($hadHtmlSuffix) {
+            $catRaw  = self::$catBySlug[$rawCat];
+            $pageRaw = ($rawPage !== null && isset(self::$pageBySlug[$rawCat][$rawPage]))
+                ? self::$pageBySlug[$rawCat][$rawPage]
+                : $rawPage;
+            $slugUrl = self::buildSlugUrl($catRaw, $pageRaw);
+            if ($slugUrl !== null) {
+                self::redirect($slugUrl);
+                return;
+            }
+        }
+
+        $_GET['cat'] = self::$catBySlug[$rawCat];
+
+        if ($rawPage !== null) {
+            if (self::isSlug($rawPage) && isset(self::$pageBySlug[$rawCat][$rawPage])) {
+                $_GET['page'] = self::$pageBySlug[$rawCat][$rawPage];
+                self::$resolvedCanonicalPath = '/' . $rawCat . '/' . $rawPage . '/';
+            } else {
+                $_GET['page'] = $rawPage;
+            }
+        } else {
+            self::$resolvedCanonicalPath = '/' . $rawCat . '/';
+        }
+    }
+
+    /**
+     * Verarbeitet eine eingehende Umlaut/Leerzeichen-URL (z.B. /Über Uns/).
+     * Bei GET: 301-Redirect auf Slug-URL (außer Draft-Modus).
+     * Bei POST: $_GET['cat'] und $_GET['page'] direkt setzen (kein Redirect,
+     * da POST-Daten beim Redirect verloren gehen).
+     */
+    private static function resolveRawCatRequest(
+        string $rawCat,
+        ?string $rawPage
+    ): void {
         $method  = isset($_SERVER['REQUEST_METHOD']) ? strtoupper($_SERVER['REQUEST_METHOD']) : 'GET';
         $isPost  = ($method === 'POST');
         $isDraft = isset($_GET['draft']) && $_GET['draft'] === 'true';
 
-        if (!$isPost && !$isDraft && !self::isSlug($rawCat) && isset(self::$catToSlug[$rawCat])) {
+        if (!$isPost && !$isDraft && isset(self::$catToSlug[$rawCat])) {
 
-            // Homepage-Rohdaten → 301 auf /
+            // Homepage-Rohname → 301 auf /
             if (
                 self::$homeCatName !== null && $rawPage === null &&
                 $rawCat === urldecode(self::$homeCatName)
@@ -370,8 +400,8 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             }
         }
 
-        // Bei POST: Kategorie/Seite trotzdem korrekt auflösen
-        if ($isPost && !self::isSlug($rawCat) && isset(self::$catToSlug[$rawCat])) {
+        // Bei POST: Kategorie/Seite korrekt auflösen
+        if ($isPost && isset(self::$catToSlug[$rawCat])) {
             $_GET['cat'] = isset(self::$catBySlug[self::$catToSlug[$rawCat]])
                 ? self::$catBySlug[self::$catToSlug[$rawCat]]
                 : $rawCat;
