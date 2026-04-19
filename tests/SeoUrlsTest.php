@@ -121,7 +121,6 @@ class SeoUrlsTest extends TestCase {
     }
 
     public function testStripHtmlSuffixNurAmEnde(): void {
-        // .html mitten im Pfad darf nicht entfernt werden
         $this->assertSame(
             '/html-seite/kontakt',
             self::callStatic('stripHtmlSuffix', '/html-seite/kontakt')
@@ -210,7 +209,6 @@ class SeoUrlsTest extends TestCase {
     }
 
     public function testBuildSlugUrlMitKodiertemKategorienamen(): void {
-        // CMS liefert Kategorienamen URL-kodiert – buildSlugUrl() muss auch damit umgehen
         self::injectCatMap(
             ['ueber-uns' => 'Über%20Uns'],
             ['Über Uns' => 'ueber-uns', 'Über%20Uns' => 'ueber-uns']
@@ -278,45 +276,32 @@ class SeoUrlsTest extends TestCase {
 
         $this->assertStringContainsString('href="/ueber-uns/"',       $result);
         $this->assertStringContainsString('href="/kontakt/"',          $result);
-        $this->assertStringContainsString('href="/?action=sitemap"',   $result); // unverändert
-        $this->assertStringContainsString('href="https://extern.de/"', $result); // unverändert
+        $this->assertStringContainsString('href="/?action=sitemap"',   $result);
+        $this->assertStringContainsString('href="https://extern.de/"', $result);
     }
 
     // -----------------------------------------------------------------------
     // rewriteOutput() – Canonical-Tag
     // -----------------------------------------------------------------------
 
-    /**
-     * moziloCMS setzt bei Kategorie-Einstiegsseiten oft die erste Unterseite
-     * als Canonical. rewriteOutput() muss den korrekten Pfad einsetzen.
-     */
     public function testRewriteOutputCanonicalWirdKorrigiert(): void {
         self::setStaticProp('resolvedCanonicalPath', '/kontakt/');
 
-        $html = '<link rel="canonical" href="https://www.example.com/Kontakt/Anfahrt.html">';
+        $html   = '<link rel="canonical" href="https://www.example.com/Kontakt/Anfahrt.html">';
         $result = _seo_urls::rewriteOutput($html);
 
         $this->assertStringContainsString(
             'href="https://www.example.com/kontakt/"',
-            $result,
-            'Canonical-Tag muss auf Kategorie-URL zeigen, nicht auf Unterseite'
+            $result
         );
     }
 
-    /**
-     * Wenn kein resolvedCanonicalPath gesetzt ist, bleibt der Canonical-Tag unverändert.
-     */
     public function testRewriteOutputCanonicalBleibtOhneResolvedPath(): void {
-        // resolvedCanonicalPath ist null (Standard nach resetStaticState)
         $html   = '<link rel="canonical" href="https://www.example.com/Kontakt/Anfahrt.html">';
         $result = _seo_urls::rewriteOutput($html);
         $this->assertSame($html, $result);
     }
 
-    /**
-     * Canonical-Tag mit vertauschter Attributreihenfolge (href vor rel)
-     * muss ebenfalls korrekt umgeschrieben werden.
-     */
     public function testRewriteOutputCanonicalAttributreihenfolgeEgal(): void {
         self::setStaticProp('resolvedCanonicalPath', '/ueber-uns/');
 
@@ -329,9 +314,6 @@ class SeoUrlsTest extends TestCase {
         );
     }
 
-    /**
-     * Canonical-Tag für eine Unterseite (Kategorie + Seite) wird korrekt gesetzt.
-     */
     public function testRewriteOutputCanonicalUnterseite(): void {
         self::setStaticProp('resolvedCanonicalPath', '/ueber-uns/unser-team/');
 
@@ -342,6 +324,241 @@ class SeoUrlsTest extends TestCase {
             'href="https://www.example.com/ueber-uns/unser-team/"',
             $result
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // handleRequest() – HTTP GET Redirects (301)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Umlaut-URL löst 301-Redirect auf Slug-URL aus.
+     */
+    public function testHandleRequestGetUmlautUrlRedirectsAufSlug(): void {
+        self::injectCatMap(
+            ['ueber-uns' => 'Über%20Uns'],
+            ['Über Uns' => 'ueber-uns', 'Über%20Uns' => 'ueber-uns']
+        );
+        self::injectPageMap('ueber-uns', 'Über%20Uns', []);
+
+        $_SERVER['REQUEST_URI'] = '/Über Uns/';
+
+        [$url, $code] = self::captureRedirect(function () {
+            self::callStatic('handleRequest');
+        });
+
+        $this->assertSame('/ueber-uns/', $url);
+        $this->assertSame(301, $code);
+    }
+
+    /**
+     * Umlaut-URL mit Unterseite löst 301-Redirect auf vollständige Slug-URL aus.
+     */
+    public function testHandleRequestGetUmlautUrlMitUnterseiteRedirects(): void {
+        self::injectCatMap(
+            ['ueber-uns' => 'Über%20Uns'],
+            ['Über Uns' => 'ueber-uns', 'Über%20Uns' => 'ueber-uns']
+        );
+        self::injectPageMap(
+            'ueber-uns',
+            'Über%20Uns',
+            ['unser-team' => 'Unser%20Team']
+        );
+
+        $_SERVER['REQUEST_URI'] = '/Über Uns/Unser Team/';
+
+        [$url, $code] = self::captureRedirect(function () {
+            self::callStatic('handleRequest');
+        });
+
+        $this->assertSame('/ueber-uns/unser-team/', $url);
+        $this->assertSame(301, $code);
+    }
+
+    /**
+     * .html-Suffix-URL löst 301-Redirect auf Slug-URL ohne Suffix aus.
+     */
+    public function testHandleRequestGetHtmlSuffixRedirectsAufSlug(): void {
+        self::injectCatMap(
+            ['ueber-uns' => 'Über%20Uns'],
+            ['Über Uns' => 'ueber-uns', 'Über%20Uns' => 'ueber-uns']
+        );
+        self::injectPageMap('ueber-uns', 'Über%20Uns', []);
+
+        $_SERVER['REQUEST_URI'] = '/ueber-uns.html';
+
+        [$url, $code] = self::captureRedirect(function () {
+            self::callStatic('handleRequest');
+        });
+
+        $this->assertSame('/ueber-uns/', $url);
+        $this->assertSame(301, $code);
+    }
+
+    /**
+     * Homepage-Slug (/startseite/) löst 301-Redirect auf / aus.
+     */
+    public function testHandleRequestGetHomepageSlugRedirectsAufRoot(): void {
+        self::injectCatMap(
+            ['startseite' => 'Startseite'],
+            ['Startseite' => 'startseite']
+        );
+        self::setStaticProp('homeCatName', 'Startseite');
+
+        $_SERVER['REQUEST_URI'] = '/startseite/';
+
+        [$url, $code] = self::captureRedirect(function () {
+            self::callStatic('handleRequest');
+        });
+
+        $this->assertSame('/', $url);
+        $this->assertSame(301, $code);
+    }
+
+    /**
+     * Homepage-Rohname (/Startseite/) löst 301-Redirect auf / aus —
+     * verhindert Redirect-Kette /Startseite/ → /startseite/ → /.
+     */
+    public function testHandleRequestGetHomepageRohnameRedirectsAufRoot(): void {
+        self::injectCatMap(
+            ['startseite' => 'Startseite'],
+            ['Startseite' => 'startseite']
+        );
+        self::setStaticProp('homeCatName', 'Startseite');
+
+        $_SERVER['REQUEST_URI'] = '/Startseite/';
+
+        [$url, $code] = self::captureRedirect(function () {
+            self::callStatic('handleRequest');
+        });
+
+        $this->assertSame('/', $url);
+        $this->assertSame(301, $code);
+    }
+
+    /**
+     * Draft-Modus (?draft=true) verhindert Redirect auch bei Umlaut-URL.
+     */
+    public function testHandleRequestGetDraftModusVerhindertRedirect(): void {
+        self::injectCatMap(
+            ['ueber-uns' => 'Über%20Uns'],
+            ['Über Uns' => 'ueber-uns', 'Über%20Uns' => 'ueber-uns']
+        );
+        self::injectPageMap('ueber-uns', 'Über%20Uns', []);
+
+        $_GET['draft']          = 'true';
+        $_SERVER['REQUEST_URI'] = '/Über Uns/';
+
+        $redirectCalled = false;
+        self::setStaticProp('redirector', function () use (&$redirectCalled) {
+            $redirectCalled = true;
+        });
+
+        self::callStatic('handleRequest');
+
+        $this->assertFalse($redirectCalled, 'Im Draft-Modus darf kein Redirect ausgelöst werden');
+    }
+
+    // -----------------------------------------------------------------------
+    // handleRequest() – HTTP GET (kein Redirect)
+    // -----------------------------------------------------------------------
+
+    public function testHandleRequestGetSlugSetzGetCat(): void {
+        self::injectCatMap(
+            ['ueber-uns' => 'Über%20Uns'],
+            ['Über Uns' => 'ueber-uns', 'Über%20Uns' => 'ueber-uns']
+        );
+        self::injectPageMap('ueber-uns', 'Über%20Uns', []);
+
+        $_SERVER['REQUEST_URI'] = '/ueber-uns/';
+
+        self::callStatic('handleRequest');
+
+        $this->assertSame('Über%20Uns', $_GET['cat'] ?? null);
+        $this->assertArrayNotHasKey('page', $_GET);
+    }
+
+    public function testHandleRequestGetSlugMitUnterseiteSetzGetCatUndPage(): void {
+        self::injectCatMap(
+            ['ueber-uns' => 'Über%20Uns'],
+            ['Über Uns' => 'ueber-uns', 'Über%20Uns' => 'ueber-uns']
+        );
+        self::injectPageMap(
+            'ueber-uns',
+            'Über%20Uns',
+            ['unser-team' => 'Unser%20Team']
+        );
+
+        $_SERVER['REQUEST_URI'] = '/ueber-uns/unser-team/';
+
+        self::callStatic('handleRequest');
+
+        $this->assertSame('Über%20Uns',   $_GET['cat']  ?? null);
+        $this->assertSame('Unser%20Team', $_GET['page'] ?? null);
+    }
+
+    public function testHandleRequestGetSetzCanonicalPathFuerKategorie(): void {
+        self::injectCatMap(
+            ['ueber-uns' => 'Über%20Uns'],
+            ['Über Uns' => 'ueber-uns', 'Über%20Uns' => 'ueber-uns']
+        );
+        self::injectPageMap('ueber-uns', 'Über%20Uns', []);
+
+        $_SERVER['REQUEST_URI'] = '/ueber-uns/';
+
+        self::callStatic('handleRequest');
+
+        $this->assertSame('/ueber-uns/', self::getStaticProp('resolvedCanonicalPath'));
+    }
+
+    public function testHandleRequestGetSetzCanonicalPathFuerUnterseite(): void {
+        self::injectCatMap(
+            ['ueber-uns' => 'Über%20Uns'],
+            ['Über Uns' => 'ueber-uns', 'Über%20Uns' => 'ueber-uns']
+        );
+        self::injectPageMap(
+            'ueber-uns',
+            'Über%20Uns',
+            ['unser-team' => 'Unser%20Team']
+        );
+
+        $_SERVER['REQUEST_URI'] = '/ueber-uns/unser-team/';
+
+        self::callStatic('handleRequest');
+
+        $this->assertSame('/ueber-uns/unser-team/', self::getStaticProp('resolvedCanonicalPath'));
+    }
+
+    public function testHandleRequestGetSystempfadWirdIgnoriert(): void {
+        $_SERVER['REQUEST_URI'] = '/admin/';
+
+        self::callStatic('handleRequest');
+
+        $this->assertArrayNotHasKey('cat',  $_GET);
+        $this->assertArrayNotHasKey('page', $_GET);
+    }
+
+    public function testHandleRequestGetRootUrlWirdIgnoriert(): void {
+        $_SERVER['REQUEST_URI'] = '/';
+
+        self::callStatic('handleRequest');
+
+        $this->assertArrayNotHasKey('cat',  $_GET);
+        $this->assertArrayNotHasKey('page', $_GET);
+    }
+
+    public function testHandleRequestGetDraftModusKeinRedirect(): void {
+        self::injectCatMap(
+            ['ueber-uns' => 'Über%20Uns'],
+            ['Über Uns' => 'ueber-uns', 'Über%20Uns' => 'ueber-uns']
+        );
+        self::injectPageMap('ueber-uns', 'Über%20Uns', []);
+
+        $_GET['draft']          = 'true';
+        $_SERVER['REQUEST_URI'] = '/ueber-uns/';
+
+        self::callStatic('handleRequest');
+
+        $this->assertSame('Über%20Uns', $_GET['cat'] ?? null);
     }
 
     // -----------------------------------------------------------------------
@@ -360,16 +577,8 @@ class SeoUrlsTest extends TestCase {
 
         self::callStatic('handleRequest');
 
-        $this->assertArrayHasKey(
-            'cat',
-            $_GET,
-            '$_GET["cat"] muss bei POST gesetzt sein'
-        );
-        $this->assertSame(
-            'Über%20Uns',
-            $_GET['cat'],
-            'Kodierter CMS-Kategoriename erwartet'
-        );
+        $this->assertArrayHasKey('cat', $_GET);
+        $this->assertSame('Über%20Uns', $_GET['cat']);
     }
 
     public function testHandleRequestPostSetzGetCatUndPage(): void {
@@ -407,134 +616,6 @@ class SeoUrlsTest extends TestCase {
         $this->assertSame('Über%20Uns', $_GET['cat'] ?? null);
     }
 
-// -----------------------------------------------------------------------
-// handleRequest() – HTTP GET (kein Redirect)
-// -----------------------------------------------------------------------
-
-    /**
-     * Slug-URL → $_GET['cat'] wird korrekt gesetzt.
-     */
-    public function testHandleRequestGetSlugSetzGetCat(): void {
-        self::injectCatMap(
-            ['ueber-uns' => 'Über%20Uns'],
-            ['Über Uns' => 'ueber-uns', 'Über%20Uns' => 'ueber-uns']
-        );
-        self::injectPageMap('ueber-uns', 'Über%20Uns', []);
-
-        $_SERVER['REQUEST_URI'] = '/ueber-uns/';
-
-        self::callStatic('handleRequest');
-
-        $this->assertSame('Über%20Uns', $_GET['cat'] ?? null);
-        $this->assertArrayNotHasKey('page', $_GET);
-    }
-
-    /**
-     * Slug-URL mit Unterseite → $_GET['cat'] und $_GET['page'] werden gesetzt.
-     */
-    public function testHandleRequestGetSlugMitUnterseiteSetzGetCatUndPage(): void {
-        self::injectCatMap(
-            ['ueber-uns' => 'Über%20Uns'],
-            ['Über Uns' => 'ueber-uns', 'Über%20Uns' => 'ueber-uns']
-        );
-        self::injectPageMap(
-            'ueber-uns',
-            'Über%20Uns',
-            ['unser-team' => 'Unser%20Team']
-        );
-
-        $_SERVER['REQUEST_URI'] = '/ueber-uns/unser-team/';
-
-        self::callStatic('handleRequest');
-
-        $this->assertSame('Über%20Uns',   $_GET['cat']  ?? null);
-        $this->assertSame('Unser%20Team', $_GET['page'] ?? null);
-    }
-
-    /**
-     * resolvedCanonicalPath wird für Kategorie-URL korrekt gesetzt.
-     */
-    public function testHandleRequestGetSetzCanonicalPathFuerKategorie(): void {
-        self::injectCatMap(
-            ['ueber-uns' => 'Über%20Uns'],
-            ['Über Uns' => 'ueber-uns', 'Über%20Uns' => 'ueber-uns']
-        );
-        self::injectPageMap('ueber-uns', 'Über%20Uns', []);
-
-        $_SERVER['REQUEST_URI'] = '/ueber-uns/';
-
-        self::callStatic('handleRequest');
-
-        $canonical = self::getStaticProp('resolvedCanonicalPath');
-        $this->assertSame('/ueber-uns/', $canonical);
-    }
-
-    /**
-     * resolvedCanonicalPath wird für Unterseiten-URL korrekt gesetzt.
-     */
-    public function testHandleRequestGetSetzCanonicalPathFuerUnterseite(): void {
-        self::injectCatMap(
-            ['ueber-uns' => 'Über%20Uns'],
-            ['Über Uns' => 'ueber-uns', 'Über%20Uns' => 'ueber-uns']
-        );
-        self::injectPageMap(
-            'ueber-uns',
-            'Über%20Uns',
-            ['unser-team' => 'Unser%20Team']
-        );
-
-        $_SERVER['REQUEST_URI'] = '/ueber-uns/unser-team/';
-
-        self::callStatic('handleRequest');
-
-        $canonical = self::getStaticProp('resolvedCanonicalPath');
-        $this->assertSame('/ueber-uns/unser-team/', $canonical);
-    }
-
-    /**
-     * Systempfade (/admin/, /plugins/ usw.) werden vom Plugin nicht angefasst.
-     */
-    public function testHandleRequestGetSystempfadWirdIgnoriert(): void {
-        $_SERVER['REQUEST_URI'] = '/admin/';
-
-        self::callStatic('handleRequest');
-
-        $this->assertArrayNotHasKey('cat',  $_GET);
-        $this->assertArrayNotHasKey('page', $_GET);
-    }
-
-    /**
-     * Root-URL (/) wird nicht verarbeitet – $_GET bleibt leer.
-     */
-    public function testHandleRequestGetRootUrlWirdIgnoriert(): void {
-        $_SERVER['REQUEST_URI'] = '/';
-
-        self::callStatic('handleRequest');
-
-        $this->assertArrayNotHasKey('cat',  $_GET);
-        $this->assertArrayNotHasKey('page', $_GET);
-    }
-
-    /**
-     * Draft-Modus (?draft=true) löst keinen Redirect aus –
-     * $_GET['cat'] wird trotzdem korrekt gesetzt.
-     */
-    public function testHandleRequestGetDraftModusKeinRedirect(): void {
-        self::injectCatMap(
-            ['ueber-uns' => 'Über%20Uns'],
-            ['Über Uns' => 'ueber-uns', 'Über%20Uns' => 'ueber-uns']
-        );
-        self::injectPageMap('ueber-uns', 'Über%20Uns', []);
-
-        // Draft-Parameter wird vor handleRequest() in $_GET gesetzt (wie moziloCMS es tut)
-        $_GET['draft']          = 'true';
-        $_SERVER['REQUEST_URI'] = '/ueber-uns/';
-
-        self::callStatic('handleRequest');
-
-        $this->assertSame('Über%20Uns', $_GET['cat'] ?? null);
-    }
-
     // -----------------------------------------------------------------------
     // Reflection- und Injektions-Hilfsmethoden
     // -----------------------------------------------------------------------
@@ -565,6 +646,7 @@ class SeoUrlsTest extends TestCase {
         self::setStaticProp('mapsBuilt',             false);
         self::setStaticProp('homeCatName',           null);
         self::setStaticProp('resolvedCanonicalPath', null);
+        self::setStaticProp('redirector',            null);
     }
 
     private static function injectCatMap(array $catBySlug, array $catToSlug): void {
@@ -579,11 +661,29 @@ class SeoUrlsTest extends TestCase {
         $pageToSlug = [];
         foreach ($pages as $pageSlug => $pageNameEnc) {
             $pageNameDec = urldecode($pageNameEnc);
-            $pageToSlug[$catNameEnc][$pageNameEnc]              = $pageSlug;
-            $pageToSlug[$catNameEnc][$pageNameDec]              = $pageSlug;
-            $pageToSlug[urldecode($catNameEnc)][$pageNameEnc]   = $pageSlug;
-            $pageToSlug[urldecode($catNameEnc)][$pageNameDec]   = $pageSlug;
+            $pageToSlug[$catNameEnc][$pageNameEnc]            = $pageSlug;
+            $pageToSlug[$catNameEnc][$pageNameDec]            = $pageSlug;
+            $pageToSlug[urldecode($catNameEnc)][$pageNameEnc] = $pageSlug;
+            $pageToSlug[urldecode($catNameEnc)][$pageNameDec] = $pageSlug;
         }
         self::setStaticProp('pageToSlug', $pageToSlug);
+    }
+
+    /**
+     * Führt eine Callable aus und fängt den ersten Redirect-Aufruf ab.
+     * Gibt [url, code] zurück oder [null, null] wenn kein Redirect ausgelöst wurde.
+     */
+    private static function captureRedirect(callable $fn): array {
+        $capturedUrl  = null;
+        $capturedCode = null;
+
+        self::setStaticProp('redirector', function (string $url, int $code) use (&$capturedUrl, &$capturedCode) {
+            $capturedUrl  = $url;
+            $capturedCode = $code;
+        });
+
+        $fn();
+
+        return [$capturedUrl, $capturedCode];
     }
 }
