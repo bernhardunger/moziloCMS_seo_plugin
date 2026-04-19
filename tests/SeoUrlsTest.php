@@ -159,6 +159,49 @@ class SeoUrlsTest extends TestCase {
     }
 
     // -----------------------------------------------------------------------
+    // getSafeOrigin()
+    // -----------------------------------------------------------------------
+
+    public function testGetSafeOriginGueltigerHost(): void {
+        $_SERVER['HTTPS']     = 'on';
+        $_SERVER['HTTP_HOST'] = 'www.example.com';
+
+        $result = self::callStatic('getSafeOrigin');
+        $this->assertSame('https://www.example.com', $result);
+    }
+
+    public function testGetSafeOriginHttp(): void {
+        unset($_SERVER['HTTPS']);
+        $_SERVER['HTTP_HOST'] = 'www.example.com';
+
+        $result = self::callStatic('getSafeOrigin');
+        $this->assertSame('http://www.example.com', $result);
+    }
+
+    public function testGetSafeOriginMitPort(): void {
+        $_SERVER['HTTPS']     = 'on';
+        $_SERVER['HTTP_HOST'] = 'www.example.com:8080';
+
+        $result = self::callStatic('getSafeOrigin');
+        $this->assertSame('https://www.example.com:8080', $result);
+    }
+
+    public function testGetSafeOriginUngueltigerHostGibtLeerstring(): void {
+        $_SERVER['HTTPS']     = 'on';
+        $_SERVER['HTTP_HOST'] = 'evil.com/inject';
+
+        $result = self::callStatic('getSafeOrigin');
+        $this->assertSame('', $result);
+    }
+
+    public function testGetSafeOriginFehlenderHostGibtLeerstring(): void {
+        unset($_SERVER['HTTP_HOST']);
+
+        $result = self::callStatic('getSafeOrigin');
+        $this->assertSame('', $result);
+    }
+
+    // -----------------------------------------------------------------------
     // buildSlugUrl()
     // -----------------------------------------------------------------------
 
@@ -330,9 +373,6 @@ class SeoUrlsTest extends TestCase {
     // handleRequest() – HTTP GET Redirects (301)
     // -----------------------------------------------------------------------
 
-    /**
-     * Umlaut-URL löst 301-Redirect auf Slug-URL aus.
-     */
     public function testHandleRequestGetUmlautUrlRedirectsAufSlug(): void {
         self::injectCatMap(
             ['ueber-uns' => 'Über%20Uns'],
@@ -350,9 +390,6 @@ class SeoUrlsTest extends TestCase {
         $this->assertSame(301, $code);
     }
 
-    /**
-     * Umlaut-URL mit Unterseite löst 301-Redirect auf vollständige Slug-URL aus.
-     */
     public function testHandleRequestGetUmlautUrlMitUnterseiteRedirects(): void {
         self::injectCatMap(
             ['ueber-uns' => 'Über%20Uns'],
@@ -374,9 +411,6 @@ class SeoUrlsTest extends TestCase {
         $this->assertSame(301, $code);
     }
 
-    /**
-     * .html-Suffix-URL löst 301-Redirect auf Slug-URL ohne Suffix aus.
-     */
     public function testHandleRequestGetHtmlSuffixRedirectsAufSlug(): void {
         self::injectCatMap(
             ['ueber-uns' => 'Über%20Uns'],
@@ -394,9 +428,6 @@ class SeoUrlsTest extends TestCase {
         $this->assertSame(301, $code);
     }
 
-    /**
-     * Homepage-Slug (/startseite/) löst 301-Redirect auf / aus.
-     */
     public function testHandleRequestGetHomepageSlugRedirectsAufRoot(): void {
         self::injectCatMap(
             ['startseite' => 'Startseite'],
@@ -414,10 +445,6 @@ class SeoUrlsTest extends TestCase {
         $this->assertSame(301, $code);
     }
 
-    /**
-     * Homepage-Rohname (/Startseite/) löst 301-Redirect auf / aus —
-     * verhindert Redirect-Kette /Startseite/ → /startseite/ → /.
-     */
     public function testHandleRequestGetHomepageRohnameRedirectsAufRoot(): void {
         self::injectCatMap(
             ['startseite' => 'Startseite'],
@@ -435,9 +462,6 @@ class SeoUrlsTest extends TestCase {
         $this->assertSame(301, $code);
     }
 
-    /**
-     * Draft-Modus (?draft=true) verhindert Redirect auch bei Umlaut-URL.
-     */
     public function testHandleRequestGetDraftModusVerhindertRedirect(): void {
         self::injectCatMap(
             ['ueber-uns' => 'Über%20Uns'],

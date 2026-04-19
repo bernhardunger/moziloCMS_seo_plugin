@@ -4,7 +4,7 @@ if (!defined('IS_CMS')) die();
 /**
  * Plugin:   seo_urls
  * @author:  B.Unger
- * @version: v1.2.1  (siehe Klassenkonstante VERSION)
+ * @version: v1.2.2  (siehe Klassenkonstante VERSION)
  * @license: GPL
  *
  * Wandelt Kategorie- und Seitennamen in SEO-freundliche URL-Slugs um.
@@ -12,8 +12,8 @@ if (!defined('IS_CMS')) die();
  *
  * Siehe htaccess_snippet.txt und README.md für die Installationsanleitung.
  *
- * Änderungen gegenüber v1.2.0:
- *  - Refactoring: redirect()-Methode extrahiert (testbar via $redirector-Callback)
+ * Änderungen gegenüber v1.2.1:
+ *  - Refactoring: getSafeOrigin()-Methode extrahiert (HTTP_HOST-Validierung zentralisiert)
  */
 
 class _seo_urls extends Plugin {
@@ -55,7 +55,7 @@ class _seo_urls extends Plugin {
      * Einzige Stelle die bei einem Versions-Update geändert werden muss —
      * alle anderen Stellen im Code referenzieren self::VERSION.
      */
-    const VERSION = 'v1.2.1';
+    const VERSION = 'v1.2.2';
 
     /**
      * Pfade die nie von diesem Plugin angefasst werden dürfen.
@@ -237,6 +237,26 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     }
 
     // -----------------------------------------------------------------------
+    // Origin-Helfer
+    // -----------------------------------------------------------------------
+
+    /**
+     * Gibt den validierten Origin (Schema + Host) zurück.
+     * Liefert einen leeren String wenn HTTP_HOST ungültig ist (z.B. Header-Injection).
+     *
+     * Zentralisiert die HTTP_HOST-Validierung die vorher in rewriteSitemap() und
+     * rewriteOutput() dupliziert war.
+     */
+    private static function getSafeOrigin(): string {
+        $rawHost = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
+        if (!preg_match('/^[a-zA-Z0-9.\-]+(:\d+)?$/', $rawHost)) {
+            return '';
+        }
+        $scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        return $scheme . '://' . $rawHost;
+    }
+
+    // -----------------------------------------------------------------------
     // Eingehende Anfrage verarbeiten
     // -----------------------------------------------------------------------
 
@@ -377,13 +397,8 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
         $xml = file_get_contents($sitemapFile);
 
-        $rawHost = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
-        if (!preg_match('/^[a-zA-Z0-9.\-]+(:\d+)?$/', $rawHost)) {
-            $rawHost = '';
-        }
-
-        $scheme        = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
-        $currentOrigin = $scheme . '://' . $rawHost;
+        // getSafeOrigin() liefert validierten Origin oder leeren String
+        $currentOrigin = self::getSafeOrigin();
 
         $xml = preg_replace_callback(
             '|<loc>(https?://[^/]+)(/[^<]*)</loc>|',
@@ -445,15 +460,12 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             $html
         );
 
+        // <link rel="canonical"> korrigieren
         if (self::$resolvedCanonicalPath !== null) {
-            $rawHost = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
-            if (!preg_match('/^[a-zA-Z0-9.\-]+(:\d+)?$/', $rawHost)) {
-                $rawHost = '';
-            }
-            if ($rawHost !== '') {
-                $scheme        = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+            $origin = self::getSafeOrigin();
+            if ($origin !== '') {
                 $base          = defined('URL_BASE') ? rtrim(URL_BASE, '/') : '';
-                $canonicalHref = $scheme . '://' . $rawHost . $base . self::$resolvedCanonicalPath;
+                $canonicalHref = $origin . $base . self::$resolvedCanonicalPath;
 
                 $html = preg_replace_callback(
                     '/<link\b[^>]*\brel=["\']canonical["\'][^>]*>/i',
