@@ -460,28 +460,37 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             $html
         );
 
-        // <link rel="canonical"> korrigieren
-        if (self::$resolvedCanonicalPath !== null) {
-            $origin = self::getSafeOrigin();
-            if ($origin !== '') {
-                $base          = defined('URL_BASE') ? rtrim(URL_BASE, '/') : '';
-                $canonicalHref = $origin . $base . self::$resolvedCanonicalPath;
+        return self::rewriteCanonical($html);
+    }
 
-                $html = preg_replace_callback(
-                    '/<link\b[^>]*\brel=["\']canonical["\'][^>]*>/i',
-                    function ($m) use ($canonicalHref) {
-                        return preg_replace(
-                            '/\bhref=["\'][^"\']*["\']/',
-                            'href="' . $canonicalHref . '"',
-                            $m[0]
-                        );
-                    },
-                    $html
-                );
-            }
+    /**
+     * Korrigiert den <link rel="canonical">-Tag im HTML-Output.
+     * moziloCMS setzt bei Kategorie-Einstiegsseiten oft die erste Unterseite
+     * als Canonical statt der Kategorie-URL selbst.
+     * Wird nur aktiv wenn $resolvedCanonicalPath gesetzt ist.
+     */
+    private static function rewriteCanonical(string $html): string {
+        if (self::$resolvedCanonicalPath === null) {
+            return $html;
         }
+        $origin = self::getSafeOrigin();
+        if ($origin === '') {
+            return $html;
+        }
+        $base          = defined('URL_BASE') ? rtrim(URL_BASE, '/') : '';
+        $canonicalHref = $origin . $base . self::$resolvedCanonicalPath;
 
-        return $html;
+        return preg_replace_callback(
+            '/<link\b[^>]*\brel=["\']canonical["\'][^>]*>/i',
+            function ($m) use ($canonicalHref) {
+                return preg_replace(
+                    '/\bhref=["\'][^"\']*["\']/',
+                    'href="' . $canonicalHref . '"',
+                    $m[0]
+                );
+            },
+            $html
+        );
     }
 
     /**
