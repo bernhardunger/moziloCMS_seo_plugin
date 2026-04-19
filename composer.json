@@ -1,0 +1,15 @@
+{
+    "name": "bernhardunger/mozilo-seo-urls",
+    "description": "SEO URLs Plugin Tests",
+    "type": "project",
+    "authors": [
+        {
+            "name": "bernhardunger",
+            "email": "github@bernhardunger.de"
+        }
+    ],
+    "minimum-stability": "dev",
+    "require-dev": {
+        "phpunit/phpunit": "*"
+    }
+}

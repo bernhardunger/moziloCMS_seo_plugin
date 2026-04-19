@@ -1,2 +1,5 @@
 _seo_urls/CLAUDE.md
 _seo_urls/seo_urls_projekt_kontext.md
+vendor/ 
+.phpunit.result.cache  git restore --staged .phpunit.result.cache git status
+.phpunit.result.cache 
