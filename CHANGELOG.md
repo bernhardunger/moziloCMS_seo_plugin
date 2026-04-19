@@ -4,7 +4,7 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
 
 ---
 
-## [v1.2.2] – 2026-04-19
+## [v1.2.1] – 2026-04-19
 
 ### Refactoring
 - **`redirect(string $url, int $code = 301): void`** extrahiert
