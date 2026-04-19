@@ -1,10 +1,10 @@
 <?php
-if(!defined('IS_CMS')) die();
+if (!defined('IS_CMS')) die();
 
 /**
  * Plugin:   seo_urls
  * @author:  B.Unger
- * @version: v1.2.0  (siehe Klassenkonstante VERSION)
+ * @version: v1.2.1  (siehe Klassenkonstante VERSION)
  * @license: GPL
  *
  * Wandelt Kategorie- und Seitennamen in SEO-freundliche URL-Slugs um.
@@ -12,15 +12,8 @@ if(!defined('IS_CMS')) die();
  *
  * Siehe htaccess_snippet.txt und README.md für die Installationsanleitung.
  *
- * Änderungen gegenüber v1.0.2:
- *  - Sicherheit:   HTTP_HOST wird vor Verwendung in XML validiert/bereinigt
- *  - Sicherheit:   isSlug() verbietet jetzt auch trailing-Bindestriche
- *  - Performance:  SYSTEM_PATHS als Klassenkonstante (kein Array-Rebuild per Request)
- *  - Performance:  slugify()-Map als static Variable (kein Array-Rebuild per Aufruf)
- *  - Performance:  makeUnique() nutzt Hash-Lookup O(1) statt in_array() O(n)
- *  - Performance:  rewriteOutput() in einem einzigen Regex-Durchlauf statt zwei
- *  - Architektur:  stripHtmlSuffix()-Hilfsmethode (DRY – 3-fache Duplizierung entfernt)
- *  - Architektur:  Versionsstring konsistent, REQUEST_METHOD mit sicherem Default
+ * Änderungen gegenüber v1.2.1:
+ *  - Refactoring: getSafeOrigin()-Methode extrahiert (HTTP_HOST-Validierung zentralisiert)
  */
 
 class _seo_urls extends Plugin {
@@ -50,19 +43,34 @@ class _seo_urls extends Plugin {
     private static $resolvedCanonicalPath = null;
 
     /**
+     * Optionaler Redirect-Callback für Tests.
+     * Im Normalbetrieb null → redirect() sendet header() + exit.
+     * In PHPUnit-Tests wird hier eine Closure eingehängt, die den Redirect
+     * abfängt ohne exit auszuführen — der Test-Runner läuft weiter.
+     */
+    private static $redirector = null;
+
+    /**
      * Plugin-Version als Klassenkonstante.
      * Einzige Stelle die bei einem Versions-Update geändert werden muss —
      * alle anderen Stellen im Code referenzieren self::VERSION.
      */
-    const VERSION = 'v1.2.0';
+    const VERSION = 'v1.2.2';
 
     /**
      * Pfade die nie von diesem Plugin angefasst werden dürfen.
      * Als Konstante definiert → wird einmalig kompiliert, nicht bei jedem Request neu gebaut.
      */
     const SYSTEM_PATHS = array(
-        'admin', 'cms', 'plugins', 'templates', 'layouts',
-        'galerien', 'kategorien', 'data', 'files'
+        'admin',
+        'cms',
+        'plugins',
+        'templates',
+        'layouts',
+        'galerien',
+        'kategorien',
+        'data',
+        'files'
     );
 
     // -----------------------------------------------------------------------
@@ -70,23 +78,14 @@ class _seo_urls extends Plugin {
     // -----------------------------------------------------------------------
 
     function getContent($value) {
-        // Wird aus Template-Platzhaltern aufgerufen: {PLUGIN(seo_urls|...)}
-        // Für plugin_first ist getPluginContent() zuständig (siehe unten)
         return '';
     }
 
     function getPluginContent($value) {
-        // moziloCMS ruft getPluginContent('plugin_first') genau einmal pro Request auf,
-        // noch bevor createGetCatPageFromModRewrite() die $_GET-Parameter auswertet.
-        // Das gibt uns die Möglichkeit, $_GET['cat'] und $_GET['page'] selbst zu setzen
-        // bevor das CMS die Seite rendert.
         if ($value === 'plugin_first') {
 
-            // Slug-Maps ein einziges Mal pro Request aufbauen (interner Guard in buildMaps())
             self::buildMaps();
 
-            // Debug-Ausgabe: /?seo_debug=1  (nur wenn im Admin aktiviert!)
-            // Gibt das gesamte Slug-Mapping als Klartext aus und beendet die Ausführung.
             if (!empty($_GET['seo_debug']) && $this->settings->get('debug_enabled') === 'true') {
                 header('Content-Type: text/plain; charset=utf-8');
                 echo "=== seo_urls Plugin " . self::VERSION . " – Slug-Map ===\n\n";
@@ -101,14 +100,8 @@ class _seo_urls extends Plugin {
                 exit;
             }
 
-            // Eingehende URL auswerten: $_GET setzen oder 301-Redirect auslösen
             self::handleRequest();
 
-            // Output-Buffer registrieren: rewriteOutput() wird aufgerufen sobald moziloCMS
-            // den fertigen HTML-String an den Browser übergeben würde — wir fangen ihn ab
-            // und schreiben alle internen href/action-Attribute auf Slug-URLs um.
-            // rewriteOutput und rewriteCallback müssen public static bleiben,
-            // da ob_start() keinen Zugriff auf private/protected Methoden hat.
             ob_start(array('_seo_urls', 'rewriteOutput'));
         }
 
@@ -150,28 +143,6 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
   <tr><td><code>/Über Uns/Unser Team/</code></td><td><code>/ueber-uns/unser-team/</code></td></tr>
   <tr><td><code>/Häufige Fragen/</code></td><td><code>/haeufige-fragen/</code></td></tr>
 </table>
-
-<h4>Hinweise</h4>
-<p><b>Sitemap (<code>?action=sitemap</code>):</b> Vollständig kompatibel. Der <code>?action=sitemap</code>-Aufruf
-wird vom Plugin nicht abgefangen. Die vom CMS gerenderten Sitemap-Links werden vom Output-Buffer
-automatisch in Slug-URLs umgeschrieben.<br>
-<i>Edge-Case:</i> Falls eine Kategorie den Namen <code>sitemap</code> hat, würde ein direkter Aufruf
-von <code>/sitemap/</code> als Slug-URL interpretiert. Der Menü-Link <code>href="/?action=sitemap"</code>
-funktioniert davon unabhängig weiterhin korrekt.</p>
-
-<p><b>URL_BASE:</b> Falls moziloCMS in einem Unterverzeichnis läuft (z.&nbsp;B. <code>/mozilo/</code>),
-wird die <code>URL_BASE</code>-Konstante automatisch berücksichtigt. Slug-URLs werden dann als
-<code>/mozilo/ueber-uns/team/</code> ausgegeben.</p>
-
-<p><b>Titeländerungen im Admin:</b> Wird ein Kategorie- oder Seitenname umbenannt, ändert sich der
-zugehörige Slug. Bestehende Bookmarks oder externe Links auf den alten Slug laufen dann ins Leere.
-In diesem Fall empfiehlt es sich, den alten Slug manuell als statische <code>Redirect</code>-Regel
-in der <code>.htaccess</code> einzutragen.</p>
-
-<h4>Debugging</h4>
-<p>Slug-Mapping aller Kategorien und Seiten ausgeben:<br>
-<code>https://deine-domain.de/?seo_debug=1</code><br>
-<i>Nur im Entwicklungsmodus verwenden!</i></p>
 ';
 
         $info = array(
@@ -191,77 +162,98 @@ in der <code>.htaccess</code> einzutragen.</p>
     // -----------------------------------------------------------------------
 
     private static function buildMaps() {
-        // Guard: Maps werden nur einmal pro PHP-Request aufgebaut.
-        // moziloCMS kann getPluginContent() theoretisch mehrfach aufrufen —
-        // der Flag verhindert doppeltes Einlesen der Kategorie-/Seitenstruktur.
         if (self::$mapsBuilt) {
             return;
         }
         self::$mapsBuilt = true;
 
-        // $CatPage ist das zentrale moziloCMS-Objekt für Kategorie- und Seitenzugriffe.
-        // Es ist kein Singleton, sondern eine globale Variable die vom CMS-Core gesetzt wird.
         global $CatPage;
 
-        // EXT_HIDDEN einschließen, falls die Konstante definiert ist (moziloCMS 2.x).
-        // Versteckte Seiten sollen ebenfalls Slug-URLs erhalten.
         $pageTypes = array(EXT_PAGE);
         if (defined('EXT_HIDDEN')) {
             $pageTypes[] = EXT_HIDDEN;
         }
 
-        // Alle Kategorienamen vom CMS holen (URL-kodiert, z.B. "%C3%9Cber%20Uns")
         $cats = $CatPage->get_CatArray(false, false, $pageTypes);
 
-        // Erste Kategorie = Homepage im CMS (moziloCMS-Konvention).
-        // Unabhängig vom tatsächlichen Namen ("Startseite", "Home", "Start" …)
-        // soll deren Slug-URL immer auf / umgeleitet werden.
         if (!empty($cats)) {
             self::$homeCatName = reset($cats);
         }
 
         foreach ($cats as $catName) {
-            // CMS liefert Kategorienamen URL-kodiert → für slugify() dekodieren
             $catDecoded = urldecode($catName);
 
-            // Slug erzeugen und gegen bereits vergebene Kategorie-Slugs auf Kollision prüfen.
-            // self::$catBySlug wird als Hash-Set übergeben (Keys = vergebene Slugs).
             $catSlug = self::makeUnique(
                 self::slugify($catDecoded),
                 self::$catBySlug
             );
 
-            // Beide Richtungen speichern:
-            self::$catBySlug[$catSlug]    = $catName;    // slug       → kodierter Name (für $_GET['cat'])
-            self::$catToSlug[$catName]    = $catSlug;    // kodierter Name   → slug (href-Matching)
-            self::$catToSlug[$catDecoded] = $catSlug;    // dekodierter Name → slug (Fallback)
+            self::$catBySlug[$catSlug]    = $catName;
+            self::$catToSlug[$catName]    = $catSlug;
+            self::$catToSlug[$catDecoded] = $catSlug;
 
-            // Alle Seiten dieser Kategorie holen (ebenfalls URL-kodiert)
             $pages = $CatPage->get_PageArray($catName, $pageTypes, true);
 
-            // Lokales Hash-Set für Seiten-Slug-Kollisionen innerhalb dieser Kategorie.
-            // Seiten in verschiedenen Kategorien dürfen denselben Slug haben.
             $pageSlugsForCat = isset(self::$pageBySlug[$catSlug]) ? self::$pageBySlug[$catSlug] : array();
 
             foreach ($pages as $pageName) {
                 $pageDecoded = urldecode($pageName);
                 $pageSlug = self::makeUnique(
                     self::slugify($pageDecoded),
-                    $pageSlugsForCat  // nur innerhalb dieser Kategorie auf Kollision prüfen
+                    $pageSlugsForCat
                 );
-                // Hash-Set für den nächsten makeUnique()-Aufruf aktuell halten
                 $pageSlugsForCat[$pageSlug] = true;
 
-                // Vier Kombinationen kodiert/dekodiert speichern, damit Lookups in
-                // rewritePath() und handleRequest() unabhängig vom Kodierungszustand
-                // des eingehenden Strings immer einen Treffer landen.
-                self::$pageBySlug[$catSlug][$pageSlug]        = $pageName;  // für $_GET['page']
-                self::$pageToSlug[$catName][$pageName]        = $pageSlug;  // kodiert/kodiert
-                self::$pageToSlug[$catName][$pageDecoded]     = $pageSlug;  // kodiert/dekodiert
-                self::$pageToSlug[$catDecoded][$pageName]     = $pageSlug;  // dekodiert/kodiert
-                self::$pageToSlug[$catDecoded][$pageDecoded]  = $pageSlug;  // dekodiert/dekodiert
+                self::$pageBySlug[$catSlug][$pageSlug]        = $pageName;
+                self::$pageToSlug[$catName][$pageName]        = $pageSlug;
+                self::$pageToSlug[$catName][$pageDecoded]     = $pageSlug;
+                self::$pageToSlug[$catDecoded][$pageName]     = $pageSlug;
+                self::$pageToSlug[$catDecoded][$pageDecoded]  = $pageSlug;
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Redirect-Helfer
+    // -----------------------------------------------------------------------
+
+    /**
+     * Sendet einen HTTP-Redirect und beendet die Ausführung.
+     *
+     * Im Normalbetrieb: header() + exit.
+     * In PHPUnit-Tests: $redirector-Callback wird aufgerufen (kein exit),
+     * damit der Test-Runner nach dem Redirect-Aufruf weiterlaufen kann.
+     *
+     * @param string $url   Ziel-URL (absolut oder relativ)
+     * @param int    $code  HTTP-Statuscode (Standard: 301)
+     */
+    protected static function redirect(string $url, int $code = 301): void {
+        if (self::$redirector !== null) {
+            call_user_func(self::$redirector, $url, $code);
+            return;
+        }
+        header('Location: ' . $url, true, $code);
+        exit;
+    }
+
+    // -----------------------------------------------------------------------
+    // Origin-Helfer
+    // -----------------------------------------------------------------------
+
+    /**
+     * Gibt den validierten Origin (Schema + Host) zurück.
+     * Liefert einen leeren String wenn HTTP_HOST ungültig ist (z.B. Header-Injection).
+     *
+     * Zentralisiert die HTTP_HOST-Validierung die vorher in rewriteSitemap() und
+     * rewriteOutput() dupliziert war.
+     */
+    private static function getSafeOrigin(): string {
+        $rawHost = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
+        if (!preg_match('/^[a-zA-Z0-9.\-]+(:\d+)?$/', $rawHost)) {
+            return '';
+        }
+        $scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        return $scheme . '://' . $rawHost;
     }
 
     // -----------------------------------------------------------------------
@@ -274,20 +266,17 @@ in der <code>.htaccess</code> einzutragen.</p>
         $uri = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '/';
 
         // Query-String abschneiden: "/ueber-uns/?foo=bar" → "/ueber-uns/"
-        // strpos ist schneller als eine Regex und reicht hier vollkommen.
         $qpos = strpos($uri, '?');
         if ($qpos !== false) {
             $uri = substr($uri, 0, $qpos);
         }
 
         // URL_BASE-Präfix entfernen, falls moziloCMS in einem Unterverzeichnis läuft.
-        // Beispiel URL_BASE="/mozilo/": "/mozilo/ueber-uns/" → "/ueber-uns/"
         if (defined('URL_BASE') && URL_BASE !== '/' && strpos($uri, URL_BASE) === 0) {
             $uri = '/' . substr($uri, strlen(URL_BASE));
         }
 
-        // .html-Endung merken BEVOR wir sie entfernen —
-        // wird in Block (A) genutzt um /ueber-uns.html → 301 → /ueber-uns/ umzuleiten
+        // .html-Endung merken BEVOR wir sie entfernen
         $hadHtmlSuffix = (bool) preg_match('/\.html$/i', $uri);
 
         $uri = self::stripHtmlSuffix($uri);
@@ -300,7 +289,9 @@ in der <code>.htaccess</code> einzutragen.</p>
         // Segmente extrahieren
         $parts = array_values(array_filter(
             explode('/', $uri),
-            function($s) { return $s !== ''; }
+            function ($s) {
+                return $s !== '';
+            }
         ));
 
         if (count($parts) === 0) {
@@ -321,80 +312,96 @@ in der <code>.htaccess</code> einzutragen.</p>
         $rawCat  = urldecode($parts[0]);
         $rawPage = isset($parts[1]) ? urldecode($parts[1]) : null;
 
-        // (A) Slug-URL → $_GET['cat'] / ['page'] setzen
-        // Sonderfall: /ueber-uns.html → 301 → /ueber-uns/
-        // Ohne diesen Redirect wären /ueber-uns.html und /ueber-uns/ Duplicate Content für Google.
         if (self::isSlug($rawCat) && isset(self::$catBySlug[$rawCat])) {
+            self::resolveSlugRequest($rawCat, $rawPage, $hadHtmlSuffix);
+        } else {
+            self::resolveRawCatRequest($rawCat, $rawPage);
+        }
+    }
 
-            // Homepage-Erkennung: Slug der ersten CMS-Kategorie ohne Unterseite → 301 auf /.
-            // Unabhängig vom tatsächlichen Namen ("Startseite", "Home", "Start" …) wird die
-            // Slug-URL der Homepage direkt auf / umgeleitet, damit kein Duplicate Content
-            // zwischen /startseite/ und / entsteht.
-            if (self::$homeCatName !== null && $rawPage === null &&
-                self::$catBySlug[$rawCat] === self::$homeCatName) {
-                $base = defined('URL_BASE') ? rtrim(URL_BASE, '/') : '';
-                header('Location: ' . $base . '/', true, 301);
-                exit;
-            }
-
-            if ($hadHtmlSuffix) {
-                $catRaw  = self::$catBySlug[$rawCat];
-                $pageRaw = ($rawPage !== null && isset(self::$pageBySlug[$rawCat][$rawPage]))
-                    ? self::$pageBySlug[$rawCat][$rawPage]
-                    : $rawPage;
-                $slugUrl = self::buildSlugUrl($catRaw, $pageRaw);
-                if ($slugUrl !== null) {
-                    header('Location: ' . $slugUrl, true, 301);
-                    exit;
-                }
-            }
-
-            $_GET['cat'] = self::$catBySlug[$rawCat];
-
-            if ($rawPage !== null) {
-                if (self::isSlug($rawPage) && isset(self::$pageBySlug[$rawCat][$rawPage])) {
-                    $_GET['page'] = self::$pageBySlug[$rawCat][$rawPage];
-                    // Kanonischen Pfad für rewriteOutput() merken
-                    self::$resolvedCanonicalPath = '/' . $rawCat . '/' . $rawPage . '/';
-                } else {
-                    $_GET['page'] = $rawPage;
-                    // Seite nicht in Slug-Map → kein Canonical-Override
-                }
-            } else {
-                // Nur Kategorie, keine Unterseite → Canonical = Kategorie-URL
-                self::$resolvedCanonicalPath = '/' . $rawCat . '/';
-            }
-
+    /**
+     * Verarbeitet eine eingehende Slug-URL (z.B. /ueber-uns/unser-team/).
+     * Setzt $_GET['cat'] und $_GET['page'] oder löst 301-Redirect aus bei:
+     *  - Homepage-Slug → /
+     *  - .html-Suffix → Slug-URL ohne Suffix
+     */
+    private static function resolveSlugRequest(
+        string $rawCat,
+        ?string $rawPage,
+        bool $hadHtmlSuffix
+    ): void {
+        // Homepage-Slug → 301 auf /
+        if (
+            self::$homeCatName !== null && $rawPage === null &&
+            self::$catBySlug[$rawCat] === self::$homeCatName
+        ) {
+            $base = defined('URL_BASE') ? rtrim(URL_BASE, '/') : '';
+            self::redirect($base . '/');
             return;
         }
 
-        // (B) Umlaut/Leerzeichen-Pfad → 301-Redirect
-        // Nicht umleiten bei POST (Formular-Absendung) oder Draft-Modus —
-        // POST-Daten gehen bei Redirect verloren, CMS braucht sie für Validierung
+        // .html-Suffix → 301 auf Slug-URL
+        if ($hadHtmlSuffix) {
+            $catRaw  = self::$catBySlug[$rawCat];
+            $pageRaw = ($rawPage !== null && isset(self::$pageBySlug[$rawCat][$rawPage]))
+                ? self::$pageBySlug[$rawCat][$rawPage]
+                : $rawPage;
+            $slugUrl = self::buildSlugUrl($catRaw, $pageRaw);
+            if ($slugUrl !== null) {
+                self::redirect($slugUrl);
+                return;
+            }
+        }
+
+        $_GET['cat'] = self::$catBySlug[$rawCat];
+
+        if ($rawPage !== null) {
+            if (self::isSlug($rawPage) && isset(self::$pageBySlug[$rawCat][$rawPage])) {
+                $_GET['page'] = self::$pageBySlug[$rawCat][$rawPage];
+                self::$resolvedCanonicalPath = '/' . $rawCat . '/' . $rawPage . '/';
+            } else {
+                $_GET['page'] = $rawPage;
+            }
+        } else {
+            self::$resolvedCanonicalPath = '/' . $rawCat . '/';
+        }
+    }
+
+    /**
+     * Verarbeitet eine eingehende Umlaut/Leerzeichen-URL (z.B. /Über Uns/).
+     * Bei GET: 301-Redirect auf Slug-URL (außer Draft-Modus).
+     * Bei POST: $_GET['cat'] und $_GET['page'] direkt setzen (kein Redirect,
+     * da POST-Daten beim Redirect verloren gehen).
+     */
+    private static function resolveRawCatRequest(
+        string $rawCat,
+        ?string $rawPage
+    ): void {
         $method  = isset($_SERVER['REQUEST_METHOD']) ? strtoupper($_SERVER['REQUEST_METHOD']) : 'GET';
         $isPost  = ($method === 'POST');
         $isDraft = isset($_GET['draft']) && $_GET['draft'] === 'true';
 
-        if (!$isPost && !$isDraft && !self::isSlug($rawCat) && isset(self::$catToSlug[$rawCat])) {
-            // Homepage-Erkennung: Roher Name der ersten Kategorie (z.B. "Startseite") → 301 auf /.
-            // Fängt /Startseite.html und /Startseite/ ab, bevor der allgemeine Redirect
-            // auf /startseite/ feuert — verhindert die Redirect-Kette Startseite.html → /startseite/ → /.
-            if (self::$homeCatName !== null && $rawPage === null &&
-                $rawCat === urldecode(self::$homeCatName)) {
+        if (!$isPost && !$isDraft && isset(self::$catToSlug[$rawCat])) {
+
+            // Homepage-Rohname → 301 auf /
+            if (
+                self::$homeCatName !== null && $rawPage === null &&
+                $rawCat === urldecode(self::$homeCatName)
+            ) {
                 $base = defined('URL_BASE') ? rtrim(URL_BASE, '/') : '';
-                header('Location: ' . $base . '/', true, 301);
-                exit;
+                self::redirect($base . '/');
+                return;
             }
 
             $slugUrl = self::buildSlugUrl($rawCat, $rawPage);
             if ($slugUrl !== null) {
-                header('Location: ' . $slugUrl, true, 301);
-                exit;
+                self::redirect($slugUrl);
+                return;
             }
         }
 
-        // Bei POST: Kategorie/Seite trotzdem korrekt auflösen damit CMS die Seite findet
-        if ($isPost && !self::isSlug($rawCat) && isset(self::$catToSlug[$rawCat])) {
+        // Bei POST: Kategorie/Seite korrekt auflösen
+        if ($isPost && isset(self::$catToSlug[$rawCat])) {
             $_GET['cat'] = isset(self::$catBySlug[self::$catToSlug[$rawCat]])
                 ? self::$catBySlug[self::$catToSlug[$rawCat]]
                 : $rawCat;
@@ -420,23 +427,14 @@ in der <code>.htaccess</code> einzutragen.</p>
 
         $xml = file_get_contents($sitemapFile);
 
-        // HTTP_HOST validieren: nur Hostnamen mit optionalem Port erlauben,
-        // keine Leerzeichen oder Sonderzeichen (verhindert Header-Injection in XML)
-        $rawHost = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
-        if (!preg_match('/^[a-zA-Z0-9.\-]+(:\d+)?$/', $rawHost)) {
-            $rawHost = '';
-        }
+        // getSafeOrigin() liefert validierten Origin oder leeren String
+        $currentOrigin = self::getSafeOrigin();
 
-        $scheme        = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
-        $currentOrigin = $scheme . '://' . $rawHost;
-
-        // Alle <loc>-URLs umschreiben
         $xml = preg_replace_callback(
             '|<loc>(https?://[^/]+)(/[^<]*)</loc>|',
-            function($m) use ($currentOrigin) {
+            function ($m) use ($currentOrigin) {
                 $path = $m[2];
 
-                // URL_BASE entfernen
                 $relative = $path;
                 if (defined('URL_BASE') && URL_BASE !== '/') {
                     $base = rtrim(URL_BASE, '/');
@@ -445,12 +443,13 @@ in der <code>.htaccess</code> einzutragen.</p>
                     }
                 }
 
-                // .html entfernen, dekodieren, Segmente extrahieren
                 $relative = self::stripHtmlSuffix($relative);
                 $relative = rtrim(urldecode($relative), '/');
                 $parts    = array_values(array_filter(
                     explode('/', $relative),
-                    function($s) { return $s !== ''; }
+                    function ($s) {
+                        return $s !== '';
+                    }
                 ));
 
                 if (count($parts) === 0) {
@@ -483,61 +482,56 @@ in der <code>.htaccess</code> einzutragen.</p>
 
     /**
      * Wird als ob_start()-Callback aufgerufen – muss public static bleiben.
-     * Schreibt href- und action-Attribute in einem einzigen Regex-Durchlauf um.
      */
     public static function rewriteOutput($html) {
-        // href und action in einem einzigen Regex-Durchlauf verarbeiten.
-        // (?:\.html|\/) am Ende des Pfad-Capture stellt sicher dass nur interne
-        // CMS-Links (.html-Endung) und Slug-URLs (Trailing-Slash) gematcht werden.
-        // Assets wie .css, .png, .pdf werden damit vom Regex gar nicht erst erfasst.
         $html = preg_replace_callback(
             '/(href|action)=(["\'])(?!https?:\/\/|mailto:|tel:)([^"\'#?]+(?:\.html|\/))(\\?[^"\'#]*)?(\#[^"\']*)?\2/i',
             array('_seo_urls', 'rewriteCallback'),
             $html
         );
 
-        // <link rel="canonical"> korrigieren.
-        // moziloCMS setzt bei Kategorie-Einstiegsseiten (z.B. /kontakt/) als Canonical
-        // oft die erste Unterseite (/Kontakt/Anfahrt.html) statt der Kategorie-URL selbst.
-        // rewriteCallback() überspringt absolute URLs (https?://) — der Canonical-Tag
-        // bleibt daher ohne diesen Block unkorrekt und verursacht GSC-Warnungen.
-        if (self::$resolvedCanonicalPath !== null) {
-            $rawHost = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
-            if (!preg_match('/^[a-zA-Z0-9.\-]+(:\d+)?$/', $rawHost)) {
-                $rawHost = '';
-            }
-            if ($rawHost !== '') {
-                $scheme        = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
-                $base          = defined('URL_BASE') ? rtrim(URL_BASE, '/') : '';
-                $canonicalHref = $scheme . '://' . $rawHost . $base . self::$resolvedCanonicalPath;
+        return self::rewriteCanonical($html);
+    }
 
-                $html = preg_replace_callback(
-                    '/<link\b[^>]*\brel=["\']canonical["\'][^>]*>/i',
-                    function ($m) use ($canonicalHref) {
-                        // href-Wert im Tag ersetzen, unabhängig von der Reihenfolge der Attribute
-                        return preg_replace(
-                            '/\bhref=["\'][^"\']*["\']/',
-                            'href="' . $canonicalHref . '"',
-                            $m[0]
-                        );
-                    },
-                    $html
-                );
-            }
+    /**
+     * Korrigiert den <link rel="canonical">-Tag im HTML-Output.
+     * moziloCMS setzt bei Kategorie-Einstiegsseiten oft die erste Unterseite
+     * als Canonical statt der Kategorie-URL selbst.
+     * Wird nur aktiv wenn $resolvedCanonicalPath gesetzt ist.
+     */
+    private static function rewriteCanonical(string $html): string {
+        if (self::$resolvedCanonicalPath === null) {
+            return $html;
         }
+        $origin = self::getSafeOrigin();
+        if ($origin === '') {
+            return $html;
+        }
+        $base          = defined('URL_BASE') ? rtrim(URL_BASE, '/') : '';
+        $canonicalHref = $origin . $base . self::$resolvedCanonicalPath;
 
-        return $html;
+        return preg_replace_callback(
+            '/<link\b[^>]*\brel=["\']canonical["\'][^>]*>/i',
+            function ($m) use ($canonicalHref) {
+                return preg_replace(
+                    '/\bhref=["\'][^"\']*["\']/',
+                    'href="' . $canonicalHref . '"',
+                    $m[0]
+                );
+            },
+            $html
+        );
     }
 
     /**
      * Wird als preg_replace_callback-Callback aufgerufen – muss public static bleiben.
      */
     public static function rewriteCallback($m) {
-        $attr      = $m[1];           // 'href' oder 'action'
+        $attr      = $m[1];
         $quote     = $m[2];
         $origPath  = $m[3];
-        $queryStr  = isset($m[4]) ? $m[4] : '';  // z.B. ?i18n=en
-        $anchor    = isset($m[5]) ? $m[5] : '';  // z.B. #abschnitt
+        $queryStr  = isset($m[4]) ? $m[4] : '';
+        $anchor    = isset($m[5]) ? $m[5] : '';
         $rewritten = self::rewritePath($origPath);
 
         return $rewritten !== null
@@ -546,10 +540,8 @@ in der <code>.htaccess</code> einzutragen.</p>
     }
 
     private static function rewritePath($path) {
-        // URL-dekodieren: %C3%9Cber%20unsere → Über unsere
         $clean = urldecode($path);
 
-        // URL_BASE entfernen: /mein-pfad/Über unsere Firma.html → /Über unsere Firma.html
         if (defined('URL_BASE') && URL_BASE !== '/') {
             $base = rtrim(URL_BASE, '/');
             if (strpos($clean, $base) === 0) {
@@ -557,13 +549,14 @@ in der <code>.htaccess</code> einzutragen.</p>
             }
         }
 
-        // .html-Endung und Trailing-Slash entfernen
         $clean = self::stripHtmlSuffix($clean);
         $clean = rtrim($clean, '/');
 
         $parts = array_values(array_filter(
             explode('/', $clean),
-            function($s) { return $s !== ''; }
+            function ($s) {
+                return $s !== '';
+            }
         ));
 
         if (count($parts) === 0) {
@@ -573,9 +566,6 @@ in der <code>.htaccess</code> einzutragen.</p>
         $catName  = $parts[0];
         $pageName = isset($parts[1]) ? $parts[1] : null;
 
-        // Bereits ein gültiger Slug (z.B. "ueber-uns") → Pfad wurde schon umgeschrieben,
-        // kein erneutes Lookup nötig. null signalisiert rewriteCallback() dass das
-        // Original-Attribut unverändert bleiben soll.
         if (self::isSlug($catName)) {
             return null;
         }
@@ -588,8 +578,6 @@ in der <code>.htaccess</code> einzutragen.</p>
     // -----------------------------------------------------------------------
 
     public static function buildSlugUrl($catName, $pageName) {
-        // Wenn die Kategorie nicht in der Map ist (unbekannter Name), gibt es keine
-        // Slug-URL → null zurückgeben damit der Aufrufer den Original-Link behält.
         if (!isset(self::$catToSlug[$catName])) {
             return null;
         }
@@ -612,34 +600,41 @@ in der <code>.htaccess</code> einzutragen.</p>
     // -----------------------------------------------------------------------
 
     public static function slugify($text) {
-        // static: Array wird einmalig initialisiert, nicht bei jedem Aufruf neu gebaut
         static $map = array(
-            'ä' => 'ae', 'ö' => 'oe', 'ü' => 'ue', 'ß' => 'ss',
-            'Ä' => 'ae', 'Ö' => 'oe', 'Ü' => 'ue',
-            'é' => 'e',  'è' => 'e',  'ê' => 'e',  'ë' => 'e',
-            'á' => 'a',  'à' => 'a',  'â' => 'a',  'ã' => 'a',
-            'ó' => 'o',  'ò' => 'o',  'ô' => 'o',  'õ' => 'o',
-            'ú' => 'u',  'ù' => 'u',  'û' => 'u',
-            'í' => 'i',  'ì' => 'i',  'î' => 'i',
-            'ñ' => 'n',  'ç' => 'c',
+            'ä' => 'ae',
+            'ö' => 'oe',
+            'ü' => 'ue',
+            'ß' => 'ss',
+            'Ä' => 'ae',
+            'Ö' => 'oe',
+            'Ü' => 'ue',
+            'é' => 'e',
+            'è' => 'e',
+            'ê' => 'e',
+            'ë' => 'e',
+            'á' => 'a',
+            'à' => 'a',
+            'â' => 'a',
+            'ã' => 'a',
+            'ó' => 'o',
+            'ò' => 'o',
+            'ô' => 'o',
+            'õ' => 'o',
+            'ú' => 'u',
+            'ù' => 'u',
+            'û' => 'u',
+            'í' => 'i',
+            'ì' => 'i',
+            'î' => 'i',
+            'ñ' => 'n',
+            'ç' => 'c',
         );
 
-        // Schritt 1: Sonderzeichen ersetzen (ä→ae, ö→oe usw.)
         $text = str_replace(array_keys($map), array_values($map), $text);
-
-        // Schritt 2: Alles in Kleinbuchstaben (mb_ wegen möglicher Restzeichen > ASCII)
         $text = mb_strtolower($text, 'UTF-8');
-
-        // Schritt 3: Alles außer a-z, 0-9 durch einen Bindestrich ersetzen.
-        // Aufeinanderfolgende Sonderzeichen (z.B. "foo  bar") werden zu einem "-" zusammengefasst.
         $text = preg_replace('/[^a-z0-9]+/', '-', $text);
-
-        // Schritt 4: Führende und abschließende Bindestriche entfernen
-        // (entstehen z.B. wenn der Name mit einem Sonderzeichen beginnt oder endet)
         $text = trim($text, '-');
 
-        // Fallback für den unwahrscheinlichen Fall dass nach allen Transformationen
-        // ein leerer String übrig bleibt (z.B. Kategoriename bestand nur aus "---")
         return $text ? $text : 'seite';
     }
 
@@ -649,7 +644,6 @@ in der <code>.htaccess</code> einzutragen.</p>
 
     /**
      * Entfernt die .html-Endung aus einem Pfad (case-insensitive).
-     * Zentralisiert eine Logik die vorher an drei Stellen dupliziert war.
      */
     private static function stripHtmlSuffix($path) {
         return preg_replace('/\.html$/i', '', $path);
@@ -657,8 +651,6 @@ in der <code>.htaccess</code> einzutragen.</p>
 
     /**
      * Prüft ob ein String ein gültiger Slug ist.
-     * Erlaubt: Kleinbuchstaben, Ziffern und Bindestriche.
-     * Bindestriche dürfen weder am Anfang noch am Ende stehen.
      */
     private static function isSlug($s) {
         return (bool) preg_match('/^[a-z0-9]([a-z0-9\-]*[a-z0-9])?$/', $s);
@@ -666,8 +658,6 @@ in der <code>.htaccess</code> einzutragen.</p>
 
     /**
      * Gibt einen Slug zurück der noch nicht als Key in $existing vorkommt.
-     * Erwartet ein assoziatives Array (Keys = bereits vergebene Slugs).
-     * Nutzt isset() für O(1)-Lookup statt in_array() mit O(n).
      */
     private static function makeUnique($slug, $existing) {
         if (!isset($existing[$slug])) {

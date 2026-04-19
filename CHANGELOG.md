@@ -4,6 +4,31 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
 
 ---
 
+## [v1.2.1] – 2026-04-19
+
+### Refactoring
+- **`redirect(string $url, int $code = 301): void`** extrahiert
+  Zentralisiert alle `header() + exit`-Aufrufe aus `handleRequest()`.
+  Ermöglicht 301-Redirect-Tests via `$redirector`-Callback ohne `exit`.
+- **`getSafeOrigin(): string`** extrahiert
+  HTTP_HOST-Validierung war in `rewriteSitemap()` und `rewriteOutput()` dupliziert.
+  Gibt validierten Origin (`https://www.example.com`) oder Leerstring zurück.
+- **`rewriteCanonical(string $html): string`** isoliert
+  Canonical-Tag-Korrektur aus `rewriteOutput()` herausgelöst –
+  klare Einzelverantwortung, leichter testbar.
+- **`handleRequest()` aufgeteilt** in `resolveSlugRequest()` und `resolveRawCatRequest()`
+  - `resolveSlugRequest()`: verarbeitet bereits korrekte Slug-URLs
+  - `resolveRawCatRequest()`: verarbeitet Umlaut/Leerzeichen-URLs und POST-Requests
+
+### Tests
+- PHPUnit 12 als dev-dependency eingerichtet (nur lokal, nie deployed)
+- 56 Tests, 80 Assertions – vollständige Abdeckung aller Hilfsmethoden:
+  `slugify()`, `isSlug()`, `stripHtmlSuffix()`, `makeUnique()`, `getSafeOrigin()`,
+  `buildSlugUrl()`, `rewriteOutput()` (Links, Sitemap, Canonical),
+  `handleRequest()` (GET, GET-Redirect 301, POST, Draft-Modus)
+
+---
+
 ## [v1.2.0] – 2025
 
 ### Behoben
