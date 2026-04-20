@@ -1,1 +1,10 @@
-CHANGELOG.md LICENSE README.md _seo_urls composer.json composer.lock gitignore phpunit.xml tests vendor text=auto
+* text=auto
+
+# Export-Ignore: wird nicht in Release-ZIPs eingebunden
+tests/          export-ignore
+vendor/         export-ignore
+composer.json   export-ignore
+composer.lock   export-ignore
+phpunit.xml     export-ignore
+.gitattributes  export-ignore
+
