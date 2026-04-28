@@ -271,9 +271,11 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             $uri = substr($uri, 0, $qpos);
         }
 
-        // Wenn moziloCMS-Parameter bereits im Query-String stehen,
-        // hat das CMS die Seite bereits aufgelöst → Plugin nicht eingreifen.
-        if (isset($_GET['cat']) || isset($_GET['page'])) {
+        // Wenn cat/page bereits im Query-String der URL stehen,
+        // hat moziloCMS die Seite bereits aufgelöst → nicht eingreifen.
+        $rawQueryString = isset($_SERVER['QUERY_STRING']) ? $_SERVER['QUERY_STRING'] : '';
+        parse_str($rawQueryString, $rawQueryParams);
+        if (isset($rawQueryParams['cat']) || isset($rawQueryParams['page'])) {
             return;
         }
 
