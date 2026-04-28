@@ -647,13 +647,13 @@ class SeoUrlsTest extends TestCase {
      */
     public function testHandleRequestGetMoziloCmsQueryParamsWerdenIgnoriert(): void {
         self::injectCatMap(
-            ['bungalow' => 'Bungalow'],
-            ['Bungalow' => 'bungalow']
+            ['kategorie' => 'Kategorie'],
+            ['Kategorie' => 'kategorie']
         );
 
-        $_GET['cat']    = 'Bungalow';
-        $_GET['page']   = '114';
-        $_SERVER['REQUEST_URI'] = '/Bungalow/Buchung%20Bungalow%201.html?cat=Bungalow&page=114&action=114';
+        // Query-String direkt in QUERY_STRING setzen – so wie Apache es tut
+        $_SERVER['QUERY_STRING'] = 'cat=Kategorie&page=114&action=114';
+        $_SERVER['REQUEST_URI']  = '/Kategorie/Seite%20Name.html?cat=Kategorie&page=114&action=114';
 
         $redirectCalled = false;
         self::setStaticProp('redirector', function () use (&$redirectCalled) {
@@ -664,14 +664,31 @@ class SeoUrlsTest extends TestCase {
 
         $this->assertFalse(
             $redirectCalled,
-            'Kein Redirect wenn moziloCMS-Parameter bereits gesetzt sind'
-        );
-        $this->assertSame(
-            'Bungalow',
-            $_GET['cat'],
-            '$_GET["cat"] darf nicht überschrieben werden'
+            'Kein Redirect wenn moziloCMS-Parameter bereits im Query-String stehen'
         );
     }
+
+    public function testHandleRequestGetSlugOhneMoziloCmsQueryParamsWirdVerarbeitet(): void {
+        self::injectCatMap(
+            ['kontakt' => 'Kontakt'],
+            ['Kontakt' => 'kontakt']
+        );
+        self::injectPageMap('kontakt', 'Kontakt', []);
+
+        // Kein cat/page im Query-String – normaler Seitenaufruf
+        $_SERVER['QUERY_STRING'] = '';
+        $_SERVER['REQUEST_URI']  = '/kontakt/';
+
+        self::callStatic('handleRequest');
+
+        $this->assertSame(
+            'Kontakt',
+            $_GET['cat'] ?? null,
+            '$_GET["cat"] muss korrekt gesetzt werden'
+        );
+    }
+
+
 
     // -----------------------------------------------------------------------
     // Reflection- und Injektions-Hilfsmethoden
