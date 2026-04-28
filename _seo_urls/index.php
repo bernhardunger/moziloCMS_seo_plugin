@@ -4,7 +4,7 @@ if (!defined('IS_CMS')) die();
 /**
  * Plugin:   seo_urls
  * @author:  B.Unger
- * @version: v1.2.1  (siehe Klassenkonstante VERSION)
+ * @version: v1.2.2  (siehe Klassenkonstante VERSION)
  * @license: GPL
  *
  * Wandelt Kategorie- und Seitennamen in SEO-freundliche URL-Slugs um.
@@ -13,7 +13,7 @@ if (!defined('IS_CMS')) die();
  * Siehe htaccess_snippet.txt und README.md für die Installationsanleitung.
  *
  * Änderungen gegenüber v1.2.1:
- *  - Refactoring: getSafeOrigin()-Methode extrahiert (HTTP_HOST-Validierung zentralisiert)
+ *  - fix: handleRequest() ignoriert Requests mit bereits gesetzten moziloCMS-Parametern (cat/page)
  */
 
 class _seo_urls extends Plugin {
@@ -269,6 +269,12 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
         $qpos = strpos($uri, '?');
         if ($qpos !== false) {
             $uri = substr($uri, 0, $qpos);
+        }
+
+        // Wenn moziloCMS-Parameter bereits im Query-String stehen,
+        // hat das CMS die Seite bereits aufgelöst → Plugin nicht eingreifen.
+        if (isset($_GET['cat']) || isset($_GET['page'])) {
+            return;
         }
 
         // URL_BASE-Präfix entfernen, falls moziloCMS in einem Unterverzeichnis läuft.

@@ -640,6 +640,39 @@ class SeoUrlsTest extends TestCase {
         $this->assertSame('Über%20Uns', $_GET['cat'] ?? null);
     }
 
+    /**
+     * Wenn moziloCMS-Parameter bereits im Query-String stehen
+     * (z.B. ?cat=Bungalow&page=114&action=114), darf das Plugin
+     * nicht eingreifen – sonst gehen die Parameter beim Redirect verloren.
+     */
+    public function testHandleRequestGetMoziloCmsQueryParamsWerdenIgnoriert(): void {
+        self::injectCatMap(
+            ['bungalow' => 'Bungalow'],
+            ['Bungalow' => 'bungalow']
+        );
+
+        $_GET['cat']    = 'Bungalow';
+        $_GET['page']   = '114';
+        $_SERVER['REQUEST_URI'] = '/Bungalow/Buchung%20Bungalow%201.html?cat=Bungalow&page=114&action=114';
+
+        $redirectCalled = false;
+        self::setStaticProp('redirector', function () use (&$redirectCalled) {
+            $redirectCalled = true;
+        });
+
+        self::callStatic('handleRequest');
+
+        $this->assertFalse(
+            $redirectCalled,
+            'Kein Redirect wenn moziloCMS-Parameter bereits gesetzt sind'
+        );
+        $this->assertSame(
+            'Bungalow',
+            $_GET['cat'],
+            '$_GET["cat"] darf nicht überschrieben werden'
+        );
+    }
+
     // -----------------------------------------------------------------------
     // Reflection- und Injektions-Hilfsmethoden
     // -----------------------------------------------------------------------
