@@ -4,6 +4,22 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
 
 ---
 
+## [v1.2.2] – 2026-04-28
+
+### Behoben
+- **Konflikt mit moziloCMS Query-Parametern**: URLs der Form
+  `/Kategorie/Seite%20Name.html?cat=Kategorie&page=114&action=114`
+  wurden fälschlicherweise vom Plugin umgeleitet. Dabei ging der komplette
+  Query-String verloren und moziloCMS konnte die Zielseite nicht mehr finden.
+  Betroffen waren vor allem versteckte Seiten die über interne moziloCMS-Parameter
+  direkt angesteuert werden.
+  `handleRequest()` prüft jetzt zu Beginn ob `$_GET['cat']` oder `$_GET['page']`
+  bereits gesetzt sind und greift in diesem Fall nicht ein.
+
+### Tests
+- 1 neuer Test: `testHandleRequestGetMoziloCmsQueryParamsWerdenIgnoriert()`
+- 57 Tests, alle grün
+
 ## [v1.2.1] – 2026-04-19
 
 ### Refactoring
