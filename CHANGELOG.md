@@ -4,6 +4,25 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
 
 ---
 
+## [v1.3.0] – 2026-04-30
+
+### Neu
+- **MetaKeywordsDescription-Kompatibilität**: Liest die `plugin.conf.php` des
+  MetaKeywordsDescription Plugins (falls installiert) und setzt `{WEBSITE_DESCRIPTION}`
+  und `{WEBSITE_KEYWORDS}` zum richtigen Zeitpunkt im Template – nach `handleRequest()`,
+  wenn `$_GET['cat']` und `$_GET['page']` bereits korrekt gesetzt sind.
+  Dadurch werden individuelle Meta-Angaben pro Seite korrekt ausgespielt, obwohl
+  MetaKeywordsDescription alphabetisch vor `_seo_urls` geladen wird und die
+  `$_GET`-Parameter zu diesem Zeitpunkt noch nicht gesetzt sind.
+  Ist MetaKeywordsDescription nicht installiert, passiert nichts – vollständig
+  rückwärtskompatibel.
+
+### Technische Details
+- `applyMetaKeywordsDescription()` neu: liest und deserialisiert `plugin.conf.php`,
+  ermittelt bei Kategorie-Einstiegsseiten die erste Unterseite via `get_FirstPageOfCat()`,
+  ersetzt `{WEBSITE_DESCRIPTION}` und `{WEBSITE_KEYWORDS}` direkt im `$template`.
+- `PLUGIN_DIR` Fallback auf `BASE_DIR . 'plugins/'` für moziloCMS 3.0.x Kompatibilität.
+
 ## [v1.2.2] – 2026-04-28
 
 ### Behoben
