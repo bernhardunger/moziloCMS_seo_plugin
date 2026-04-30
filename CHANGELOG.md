@@ -17,11 +17,25 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
   Ist MetaKeywordsDescription nicht installiert, passiert nichts – vollständig
   rückwärtskompatibel.
 
+### Hinweis
+Das `MetaKeywordsDescription` Plugin kann nach dem Befüllen der Descriptions
+**deaktiviert** werden – `_seo_urls` liest die `plugin.conf.php` direkt und
+befüllt die Platzhalter selbst. Das Plugin muss nur zum **Pflegen der Inhalte**
+aktiviert werden. Im deaktivierten Zustand entfällt der unnötige Durchlauf des
+Plugins bei jedem Request.
+
 ### Technische Details
 - `applyMetaKeywordsDescription()` neu: liest und deserialisiert `plugin.conf.php`,
   ermittelt bei Kategorie-Einstiegsseiten die erste Unterseite via `get_FirstPageOfCat()`,
   ersetzt `{WEBSITE_DESCRIPTION}` und `{WEBSITE_KEYWORDS}` direkt im `$template`.
+- Neue Klassenkonstante `META_PLUGIN_NAME` für den Plugin-Namen (einzige Pflegestelle).
 - `PLUGIN_DIR` Fallback auf `BASE_DIR . 'plugins/'` für moziloCMS 3.0.x Kompatibilität.
+- `empty()` statt `isset()` für `$_GET['page']` – moziloCMS setzt `false` bei Kategorie-Einstiegsseiten.
+- `get_FirstPageOfCat()` ohne vorherige `exists_CatPage()`-Prüfung – robuster und direkt.
+
+### Tests
+- Bestehende 57 Tests weiterhin grün
+- Manuell getestet mit moziloCMS 3.0.x und MetaKeywordsDescription Plugin
 
 ## [v1.2.2] – 2026-04-28
 
