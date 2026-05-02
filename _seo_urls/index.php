@@ -4,16 +4,19 @@ if (!defined('IS_CMS')) die();
 /**
  * Plugin:   seo_urls
  * @author:  B.Unger
- * @version: v1.2.2  (siehe Klassenkonstante VERSION)
+ * @version: v1.3.0  (siehe Klassenkonstante VERSION)
  * @license: GPL
  *
  * Wandelt Kategorie- und Seitennamen in SEO-freundliche URL-Slugs um.
  * Läuft als plugin_first — vor createGetCatPageFromModRewrite().
  *
- * Siehe htaccess_snippet.txt und README.md für die Installationsanleitung.
- *
- * Änderungen gegenüber v1.2.1:
- *  - fix: handleRequest() ignoriert Requests mit bereits gesetzten moziloCMS-Parametern (cat/page)
+ * Änderungen gegenüber v1.2.2:
+ *  - neu: Kompatibilität mit MetaKeywordsDescription Plugin
+ *         Liest dessen plugin.conf.php und setzt {WEBSITE_DESCRIPTION} und
+ *         {WEBSITE_KEYWORDS} zum richtigen Zeitpunkt im Template –
+ *         nach handleRequest(), wenn $_GET['cat'] und $_GET['page'] bereits
+ *         korrekt gesetzt sind. Funktioniert nur wenn MetaKeywordsDescription
+ *         installiert ist, andernfalls passiert nichts.
  */
 
 class _seo_urls extends Plugin {
@@ -30,37 +33,21 @@ class _seo_urls extends Plugin {
 
     /**
      * URL-kodierter Name der ersten CMS-Kategorie (= Homepage).
-     * Wird in handleRequest() genutzt, um /startseite/ → / zu redirecten.
      */
     private static $homeCatName = null;
 
     /**
-     * Kanonischer Slug-Pfad der aktuellen Anfrage (z.B. '/kontakt/' oder '/kontakt/anfahrt/').
-     * Wird von handleRequest() gesetzt und in rewriteOutput() genutzt, um den
-     * <link rel="canonical">-Tag zu korrigieren — moziloCMS gibt bei Kategorie-Einstiegsseiten
-     * oft die erste Unterseite als Canonical aus statt der Kategorie-URL selbst.
+     * Kanonischer Slug-Pfad der aktuellen Anfrage.
      */
     private static $resolvedCanonicalPath = null;
 
     /**
      * Optionaler Redirect-Callback für Tests.
-     * Im Normalbetrieb null → redirect() sendet header() + exit.
-     * In PHPUnit-Tests wird hier eine Closure eingehängt, die den Redirect
-     * abfängt ohne exit auszuführen — der Test-Runner läuft weiter.
      */
     private static $redirector = null;
 
-    /**
-     * Plugin-Version als Klassenkonstante.
-     * Einzige Stelle die bei einem Versions-Update geändert werden muss —
-     * alle anderen Stellen im Code referenzieren self::VERSION.
-     */
-    const VERSION = 'v1.2.2';
+    const VERSION = 'v1.3.0';
 
-    /**
-     * Pfade die nie von diesem Plugin angefasst werden dürfen.
-     * Als Konstante definiert → wird einmalig kompiliert, nicht bei jedem Request neu gebaut.
-     */
     const SYSTEM_PATHS = array(
         'admin',
         'cms',
@@ -72,6 +59,12 @@ class _seo_urls extends Plugin {
         'data',
         'files'
     );
+
+    /**
+     * Name des MetaKeywordsDescription Plugins.
+     * Einzige Stelle die geändert werden muss falls das Plugin umbenannt wird.
+     */
+    const META_PLUGIN_NAME = 'MetaKeywordsDescription';
 
     // -----------------------------------------------------------------------
     // Pflichtmethoden moziloCMS Plugin-API
@@ -101,6 +94,11 @@ class _seo_urls extends Plugin {
             }
 
             self::handleRequest();
+
+            // MetaKeywordsDescription-Kompatibilität:
+            // Setzt {WEBSITE_DESCRIPTION} und {WEBSITE_KEYWORDS} im Template,
+            // nachdem $_GET['cat'] und $_GET['page'] korrekt gesetzt wurden.
+            self::applyMetaKeywordsDescription();
 
             ob_start(array('_seo_urls', 'rewriteOutput'));
         }
@@ -134,6 +132,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
   <tr><td><b>301-Redirect</b></td><td>Alte Pfade mit Umlauten/Leerzeichen werden permanent weitergeleitet</td></tr>
   <tr><td><b>Kollisionsschutz</b></td><td>Identische Slugs erhalten automatisch ein Suffix (<code>-2</code>, <code>-3</code> …)</td></tr>
   <tr><td><b>Sitemap-kompatibel</b></td><td><code>?action=sitemap</code> funktioniert unverändert, Links werden ebenfalls umgeschrieben</td></tr>
+  <tr><td><b>MetaKeywordsDescription</b></td><td>Kompatibel mit dem MetaKeywordsDescription Plugin – individuelle Meta-Angaben pro Seite werden korrekt gesetzt</td></tr>
 </table>
 
 <h4>Beispiele</h4>
@@ -214,18 +213,85 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     }
 
     // -----------------------------------------------------------------------
+    // MetaKeywordsDescription-Kompatibilität
+    // -----------------------------------------------------------------------
+
+    /**
+     * Liest die plugin.conf.php des MetaKeywordsDescription Plugins (falls installiert)
+     * und setzt {WEBSITE_DESCRIPTION} und {WEBSITE_KEYWORDS} im Template.
+     *
+     * Wird nach handleRequest() aufgerufen, wenn $_GET['cat'] und $_GET['page']
+     * bereits korrekt gesetzt sind.
+     *
+     * Ist MetaKeywordsDescription nicht installiert oder kein Eintrag vorhanden,
+     * passiert nichts — die globalen CMS-Einstellungen bleiben unverändert.
+     */
+    private static function applyMetaKeywordsDescription() {
+        $pluginDir = defined('PLUGIN_DIR') ? PLUGIN_DIR : (defined('BASE_DIR') ? BASE_DIR . 'plugins/' : '');
+        if ($pluginDir === '') {
+            return;
+        }
+
+        $confFile = $pluginDir . self::META_PLUGIN_NAME . '/plugin.conf.php';
+        if (!file_exists($confFile)) {
+            return;
+        }
+
+        // Header "php die();" überspringen – serialisierte Daten beginnen immer mit "a:"
+        $raw = file_get_contents($confFile);
+        $pos = strpos($raw, 'a:');
+        if ($pos === false) {
+            return;
+        }
+        $raw = substr($raw, $pos);
+
+        $conf = @unserialize($raw);
+        if (!is_array($conf)) {
+            return;
+        }
+
+        // Aktuelle Kategorie und Seite aus $_GET lesen.
+        // $_GET['cat'] ist URL-kodiert (z.B. "%C3%9Cber%20unsere%20Kanzlei") –
+        // genau so wie die Keys in plugin.conf.php gespeichert sind.
+        // empty() statt isset() für $page: moziloCMS setzt $_GET['page'] = false
+        // bei Kategorie-Einstiegsseiten ohne explizite Unterseite.
+        $cat  = isset($_GET['cat'])   ? $_GET['cat']  : '';
+        $page = !empty($_GET['page']) ? $_GET['page'] : '';
+
+        // Falls keine Seite gesetzt: erste Seite der Kategorie ermitteln
+        if ($page === '') {
+            global $CatPage;
+            if (isset($CatPage)) {
+                $firstPage = $CatPage->get_FirstPageOfCat($cat);
+                $page      = ($firstPage !== false) ? $firstPage : '';
+            }
+        }
+
+        $key = '@=' . $cat . ':' . $page . '=@';
+
+        if (!isset($conf[$key]) || !is_array($conf[$key])) {
+            return;
+        }
+
+        $setting = $conf[$key];
+
+        global $template;
+
+        if (!empty($setting['description']) && strlen($setting['description']) > 2) {
+            $template = str_replace('{WEBSITE_DESCRIPTION}', $setting['description'], $template);
+        }
+
+        if (!empty($setting['keywords']) && strlen($setting['keywords']) > 2) {
+            $template = str_replace('{WEBSITE_KEYWORDS}', $setting['keywords'], $template);
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // Redirect-Helfer
     // -----------------------------------------------------------------------
 
     /**
      * Sendet einen HTTP-Redirect und beendet die Ausführung.
-     *
-     * Im Normalbetrieb: header() + exit.
-     * In PHPUnit-Tests: $redirector-Callback wird aufgerufen (kein exit),
-     * damit der Test-Runner nach dem Redirect-Aufruf weiterlaufen kann.
-     *
-     * @param string $url   Ziel-URL (absolut oder relativ)
-     * @param int    $code  HTTP-Statuscode (Standard: 301)
      */
     protected static function redirect(string $url, int $code = 301): void {
         if (self::$redirector !== null) {
@@ -242,10 +308,6 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
     /**
      * Gibt den validierten Origin (Schema + Host) zurück.
-     * Liefert einen leeren String wenn HTTP_HOST ungültig ist (z.B. Header-Injection).
-     *
-     * Zentralisiert die HTTP_HOST-Validierung die vorher in rewriteSitemap() und
-     * rewriteOutput() dupliziert war.
      */
     private static function getSafeOrigin(): string {
         $rawHost = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
@@ -261,30 +323,23 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     // -----------------------------------------------------------------------
 
     private static function handleRequest() {
-        // REQUEST_URI enthält den vollständigen Pfad inkl. Query-String,
-        // z.B. "/mozilo/ueber-uns/?foo=bar" — wir brauchen nur den Pfadteil.
         $uri = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '/';
 
-        // Query-String abschneiden: "/ueber-uns/?foo=bar" → "/ueber-uns/"
         $qpos = strpos($uri, '?');
         if ($qpos !== false) {
             $uri = substr($uri, 0, $qpos);
         }
 
-        // Wenn cat/page bereits im Query-String der URL stehen,
-        // hat moziloCMS die Seite bereits aufgelöst → nicht eingreifen.
         $rawQueryString = isset($_SERVER['QUERY_STRING']) ? $_SERVER['QUERY_STRING'] : '';
         parse_str($rawQueryString, $rawQueryParams);
         if (isset($rawQueryParams['cat']) || isset($rawQueryParams['page'])) {
             return;
         }
 
-        // URL_BASE-Präfix entfernen, falls moziloCMS in einem Unterverzeichnis läuft.
         if (defined('URL_BASE') && URL_BASE !== '/' && strpos($uri, URL_BASE) === 0) {
             $uri = '/' . substr($uri, strlen(URL_BASE));
         }
 
-        // .html-Endung merken BEVOR wir sie entfernen
         $hadHtmlSuffix = (bool) preg_match('/\.html$/i', $uri);
 
         $uri = self::stripHtmlSuffix($uri);
@@ -294,7 +349,6 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             return;
         }
 
-        // Segmente extrahieren
         $parts = array_values(array_filter(
             explode('/', $uri),
             function ($s) {
@@ -306,13 +360,11 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             return;
         }
 
-        // sitemap.xml on-the-fly umschreiben
         if (strtolower($parts[0]) === 'sitemap.xml') {
             self::rewriteSitemap();
             return;
         }
 
-        // Systempfade nie anfassen
         if (in_array(strtolower($parts[0]), self::SYSTEM_PATHS, true)) {
             return;
         }
@@ -328,17 +380,13 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     }
 
     /**
-     * Verarbeitet eine eingehende Slug-URL (z.B. /ueber-uns/unser-team/).
-     * Setzt $_GET['cat'] und $_GET['page'] oder löst 301-Redirect aus bei:
-     *  - Homepage-Slug → /
-     *  - .html-Suffix → Slug-URL ohne Suffix
+     * Verarbeitet eine eingehende Slug-URL.
      */
     private static function resolveSlugRequest(
         string $rawCat,
         ?string $rawPage,
         bool $hadHtmlSuffix
     ): void {
-        // Homepage-Slug → 301 auf /
         if (
             self::$homeCatName !== null && $rawPage === null &&
             self::$catBySlug[$rawCat] === self::$homeCatName
@@ -348,7 +396,6 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             return;
         }
 
-        // .html-Suffix → 301 auf Slug-URL
         if ($hadHtmlSuffix) {
             $catRaw  = self::$catBySlug[$rawCat];
             $pageRaw = ($rawPage !== null && isset(self::$pageBySlug[$rawCat][$rawPage]))
@@ -376,10 +423,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     }
 
     /**
-     * Verarbeitet eine eingehende Umlaut/Leerzeichen-URL (z.B. /Über Uns/).
-     * Bei GET: 301-Redirect auf Slug-URL (außer Draft-Modus).
-     * Bei POST: $_GET['cat'] und $_GET['page'] direkt setzen (kein Redirect,
-     * da POST-Daten beim Redirect verloren gehen).
+     * Verarbeitet eine eingehende Umlaut/Leerzeichen-URL.
      */
     private static function resolveRawCatRequest(
         string $rawCat,
@@ -391,7 +435,6 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
         if (!$isPost && !$isDraft && isset(self::$catToSlug[$rawCat])) {
 
-            // Homepage-Rohname → 301 auf /
             if (
                 self::$homeCatName !== null && $rawPage === null &&
                 $rawCat === urldecode(self::$homeCatName)
@@ -408,7 +451,6 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             }
         }
 
-        // Bei POST: Kategorie/Seite korrekt auflösen
         if ($isPost && isset(self::$catToSlug[$rawCat])) {
             $_GET['cat'] = isset(self::$catBySlug[self::$catToSlug[$rawCat]])
                 ? self::$catBySlug[self::$catToSlug[$rawCat]]
@@ -435,7 +477,6 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
         $xml = file_get_contents($sitemapFile);
 
-        // getSafeOrigin() liefert validierten Origin oder leeren String
         $currentOrigin = self::getSafeOrigin();
 
         $xml = preg_replace_callback(
@@ -503,9 +544,6 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
     /**
      * Korrigiert den <link rel="canonical">-Tag im HTML-Output.
-     * moziloCMS setzt bei Kategorie-Einstiegsseiten oft die erste Unterseite
-     * als Canonical statt der Kategorie-URL selbst.
-     * Wird nur aktiv wenn $resolvedCanonicalPath gesetzt ist.
      */
     private static function rewriteCanonical(string $html): string {
         if (self::$resolvedCanonicalPath === null) {
