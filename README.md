@@ -12,6 +12,7 @@ Wandelt Kategorie- und Seitennamen in saubere, Google-freundliche URL-Slugs um.
 | **301-Redirect** | Alte Pfade mit Umlauten/Leerzeichen werden permanent weitergeleitet |
 | **Kollisionsschutz** | Identische Slugs erhalten automatisch ein Suffix (`-2`, `-3` …) |
 | **Sitemap-kompatibel** | `?action=sitemap` funktioniert unverändert, Links werden ebenfalls umgeschrieben |
+| **MetaKeywordsDescription** | Individuelle Meta-Descriptions und Keywords pro Seite werden korrekt ausgespielt |
 
 **Beispiele:**
 
@@ -105,7 +106,16 @@ Im moziloCMS Admin-Panel → Plugins → `seo_urls` aktivieren.
 Den Debug-Modus in der Plugin-Konfiguration nur im Testbetrieb aktivieren und vor dem Go-Live wieder deaktivieren.
 
 ---
+
 ## Hinweise
+
+### MetaKeywordsDescription-Kompatibilität
+
+Das Plugin ist kompatibel mit dem `MetaKeywordsDescription` Plugin. Da `MetaKeywordsDescription` alphabetisch vor `_seo_urls` geladen wird, liest es `$_GET['cat']` und `$_GET['page']` bevor diese korrekt gesetzt sind – individuelle Meta-Descriptions würden daher nie ausgespielt.
+
+`_seo_urls` löst dieses Problem automatisch: Es liest nach `handleRequest()` die `plugin.conf.php` von `MetaKeywordsDescription` direkt aus und setzt `{WEBSITE_DESCRIPTION}` und `{WEBSITE_KEYWORDS}` im Template zum richtigen Zeitpunkt.
+
+**Hinweis:** `MetaKeywordsDescription` kann nach dem Befüllen der Descriptions **deaktiviert** werden – `_seo_urls` liest die `plugin.conf.php` direkt. Das Plugin muss nur zum **Pflegen der Inhalte** aktiviert werden. Ist `MetaKeywordsDescription` nicht installiert, passiert nichts – vollständig rückwärtskompatibel.
 
 ### Sitemap (`?action=sitemap`)
 
