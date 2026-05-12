@@ -12,6 +12,7 @@ Wandelt Kategorie- und Seitennamen in saubere, Google-freundliche URL-Slugs um.
 | **301-Redirect** | Alte Pfade mit Umlauten/Leerzeichen werden permanent weitergeleitet |
 | **Kollisionsschutz** | Identische Slugs erhalten automatisch ein Suffix (`-2`, `-3` …) |
 | **Sitemap-kompatibel** | `?action=sitemap` funktioniert unverändert, Links werden ebenfalls umgeschrieben |
+| **MetaKeywordsDescription** | Individuelle Meta-Descriptions und Keywords pro Seite werden korrekt ausgespielt |
 
 **Beispiele:**
 
@@ -25,7 +26,9 @@ Wandelt Kategorie- und Seitennamen in saubere, Google-freundliche URL-Slugs um.
 
 ## Funktionsweise
 
-moziloCMS 3 liefert bereits lesbare Pfad-URLs (`/Über Uns/Team/`), diese enthalten jedoch Umlaute und Leerzeichen, die von Google nicht korrekt indexiert werden. Das Plugin greift als `plugin_first` ein, **bevor** moziloCMS den Pfad selbst auswertet, falls mehrere Plugins mit plugin_first aktiv sind, wird das Plugin ducht den Unterstrich im Verzeichnisnamen als erstes geladen (siehe "cms\DefaultFunc.php"):
+moziloCMS 3 liefert bereits lesbare Pfad-URLs (`/Über Uns/Team/`), diese enthalten jedoch Umlaute und Leerzeichen, die von Suchmaschinen nicht korrekt indexiert werden. Das Plugin greift als `plugin_first` ein, **bevor** moziloCMS den Pfad selbst auswertet.
+
+Da moziloCMS `plugin_first`-Plugins alphabetisch nach Ordnernamen lädt und Großbuchstaben in der ASCII-Sortierung vor dem Unterstrich kommen, ist der Plugin-Ordner bewusst als `_seo_urls` benannt – der Unterstrich stellt sicher, dass das Plugin nach Plugins mit Großbuchstaben wie z.B. `MetaKeywordsDescription` geladen wird. Innerhalb der Unterstrich-Plugins wird `_seo_urls` als erstes ausgeführt (siehe `cms\DefaultFunc.php`).
 
 ```
 Browser: GET /ueber-uns/team/
@@ -38,18 +41,20 @@ plugin_first: "ueber-uns" ist Slug → auflösen →
         ↓
 createGetCatPageFromModRewrite() wird übersprungen (cat bereits gesetzt)
         ↓
+applyMetaKeywordsDescription(): individuelle Meta-Description wird gesetzt
+        ↓
 CMS rendert Seite normal
         ↓
 ob_start-Callback: alle href="/Über Uns/..." → href="/ueber-uns/..."
 ```
 
-Ruft jemand noch eine alte URL mit Umlauten auf (`/Über Uns/`), antwortet das Plugin mit einem **301-Redirect** auf die Slug-URL.
+Ruft jemand noch eine alte URL mit Umlauten auf (`/Über Uns/`), antwortet das Plugin mit einem **301-Redirect** auf die Slug-URL. Bestehende Bookmarks und Backlinks bleiben dadurch vollständig erhalten.
 
 ---
 
 ## Installation
 
-### 1. Plugin-Zipdatei installieren im moziloCMS admin Dialog
+### 1. Plugin-Zipdatei installieren im moziloCMS Admin-Dialog
 
 ### 2. .htaccess anpassen
 
@@ -79,15 +84,42 @@ RewriteRule ^(.*)$ index.php [QSA,L]
 # mozilo_end
 ```
 
+#### .htaccess zusammengefasst
+```
+Options -Indexes
+RewriteEngine On
+RewriteBase /
+RewriteCond %{HTTPS} off [OR]
+RewriteCond %{HTTP_HOST} !^www\. [NC]
+# !Domain-Namen anpassen!
+RewriteRule ^(.*)$ https://www.meine-domain.de/$1 [L,R=301]
+# mozilo generated - not change from here to mozilo_end
+RewriteRule ^(.*)/mod_rewrite_t_e_s_t\.html$ $1/index\.php?moderewrite=ok [L]
+RewriteRule \.html$ index\.php [QSA,L]
+RewriteRule ^sitemap\.xml$ index.php [L,QSA]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]
+# mozilo_end
+```
+
 ### 3. Plugin aktivieren
 
 Im moziloCMS Admin-Panel → Plugins → `seo_urls` aktivieren.
 
-**Wichtig:** Da moziloCMS plugin_first-Plugins alphabetisch nach Ordnernamen sortiert, ist der Plugin-Ordner bewusst als _seo_urls benannt — der Unterstrich stellt sicher, dass das Plugin vor allen anderen plugin_first-Plugins ausgeführt wird.
 Den Debug-Modus in der Plugin-Konfiguration nur im Testbetrieb aktivieren und vor dem Go-Live wieder deaktivieren.
 
 ---
+
 ## Hinweise
+
+### MetaKeywordsDescription-Kompatibilität
+
+Das Plugin ist kompatibel mit dem `MetaKeywordsDescription` Plugin. Da `MetaKeywordsDescription` alphabetisch vor `_seo_urls` geladen wird, liest es `$_GET['cat']` und `$_GET['page']` bevor diese korrekt gesetzt sind – individuelle Meta-Descriptions würden daher nie ausgespielt.
+
+`_seo_urls` löst dieses Problem automatisch: Es liest nach `handleRequest()` die `plugin.conf.php` von `MetaKeywordsDescription` direkt aus und setzt `{WEBSITE_DESCRIPTION}` und `{WEBSITE_KEYWORDS}` im Template zum richtigen Zeitpunkt.
+
+**Hinweis:** `MetaKeywordsDescription` kann nach dem Befüllen der Descriptions **deaktiviert** werden – `_seo_urls` liest die `plugin.conf.php` direkt. Das Plugin muss nur zum **Pflegen der Inhalte** aktiviert werden. Ist `MetaKeywordsDescription` nicht installiert, passiert nichts – vollständig rückwärtskompatibel.
 
 ### Sitemap (`?action=sitemap`)
 
@@ -113,4 +145,4 @@ Slug-Mapping aller Kategorien und Seiten ausgeben:
 https://deine-domain.de/?seo_debug=1
 ```
 
-> Nur im Entwicklungsmodus verwenden. Den Parameter danach entfernen und in der Plugin-Konfiguration ausschalten
+> Nur im Entwicklungsmodus verwenden. Den Parameter danach entfernen und in der Plugin-Konfiguration ausschalten.
