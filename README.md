@@ -26,7 +26,9 @@ Wandelt Kategorie- und Seitennamen in saubere, Google-freundliche URL-Slugs um.
 
 ## Funktionsweise
 
-moziloCMS 3 liefert bereits lesbare Pfad-URLs (`/Über Uns/Team/`), diese enthalten jedoch Umlaute und Leerzeichen, die von Google nicht korrekt indexiert werden. Das Plugin greift als `plugin_first` ein, **bevor** moziloCMS den Pfad selbst auswertet, falls mehrere Plugins mit plugin_first aktiv sind, wird das Plugin ducht den Unterstrich im Verzeichnisnamen als erstes geladen (siehe "cms\DefaultFunc.php") :
+moziloCMS 3 liefert bereits lesbare Pfad-URLs (`/Über Uns/Team/`), diese enthalten jedoch Umlaute und Leerzeichen, die von Suchmaschinen nicht korrekt indexiert werden. Das Plugin greift als `plugin_first` ein, **bevor** moziloCMS den Pfad selbst auswertet.
+
+Da moziloCMS `plugin_first`-Plugins alphabetisch nach Ordnernamen lädt und Großbuchstaben in der ASCII-Sortierung vor dem Unterstrich kommen, ist der Plugin-Ordner bewusst als `_seo_urls` benannt – der Unterstrich stellt sicher, dass das Plugin nach Plugins mit Großbuchstaben wie z.B. `MetaKeywordsDescription` geladen wird. Innerhalb der Unterstrich-Plugins wird `_seo_urls` als erstes ausgeführt (siehe `cms\DefaultFunc.php`).
 
 ```
 Browser: GET /ueber-uns/team/
@@ -39,18 +41,20 @@ plugin_first: "ueber-uns" ist Slug → auflösen →
         ↓
 createGetCatPageFromModRewrite() wird übersprungen (cat bereits gesetzt)
         ↓
+applyMetaKeywordsDescription(): individuelle Meta-Description wird gesetzt
+        ↓
 CMS rendert Seite normal
         ↓
 ob_start-Callback: alle href="/Über Uns/..." → href="/ueber-uns/..."
 ```
 
-Ruft jemand noch eine alte URL mit Umlauten auf (`/Über Uns/`), antwortet das Plugin mit einem **301-Redirect** auf die Slug-URL.
+Ruft jemand noch eine alte URL mit Umlauten auf (`/Über Uns/`), antwortet das Plugin mit einem **301-Redirect** auf die Slug-URL. Bestehende Bookmarks und Backlinks bleiben dadurch vollständig erhalten.
 
 ---
 
 ## Installation
 
-### 1. Plugin-Zipdatei installieren im moziloCMS admin Dialog
+### 1. Plugin-Zipdatei installieren im moziloCMS Admin-Dialog
 
 ### 2. .htaccess anpassen
 
@@ -79,7 +83,8 @@ RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^(.*)$ index.php [QSA,L]
 # mozilo_end
 ```
-#### .htaccess zusammengefasst 
+
+#### .htaccess zusammengefasst
 ```
 Options -Indexes
 RewriteEngine On
@@ -102,7 +107,6 @@ RewriteRule ^(.*)$ index.php [QSA,L]
 
 Im moziloCMS Admin-Panel → Plugins → `seo_urls` aktivieren.
 
-**Wichtig:** Da moziloCMS plugin_first-Plugins alphabetisch nach Ordnernamen sortiert, ist der Plugin-Ordner bewusst als _seo_urls benannt — der Unterstrich stellt sicher, dass das Plugin vor allen anderen plugin_first-Plugins ausgeführt wird.
 Den Debug-Modus in der Plugin-Konfiguration nur im Testbetrieb aktivieren und vor dem Go-Live wieder deaktivieren.
 
 ---
@@ -141,4 +145,4 @@ Slug-Mapping aller Kategorien und Seiten ausgeben:
 https://deine-domain.de/?seo_debug=1
 ```
 
-> Nur im Entwicklungsmodus verwenden. Den Parameter danach entfernen und in der Plugin-Konfiguration ausschalten
+> Nur im Entwicklungsmodus verwenden. Den Parameter danach entfernen und in der Plugin-Konfiguration ausschalten.
