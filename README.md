@@ -115,7 +115,7 @@ Den Debug-Modus in der Plugin-Konfiguration nur im Testbetrieb aktivieren und vo
 
 ### MetaKeywordsDescription-Kompatibilität
 
-Das Plugin ist kompatibel mit dem `MetaKeywordsDescription` Plugin. Da `MetaKeywordsDescription` alphabetisch vor `_seo_urls` geladen wird, liest es `$_GET['cat']` und `$_GET['page']` bevor diese korrekt gesetzt sind – individuelle Meta-Descriptions würden daher nie ausgespielt.
+Das Plugin ist kompatibel mit dem `MetaKeywordsDescription` Plugin. Da `MetaKeywordsDescription` ebenfalls als `plugin_first` läuft und alphabetisch vor `_seo_urls` geladen wird, liest es `$_GET['cat']` und `$_GET['page']` bevor diese korrekt gesetzt sind – individuelle Meta-Descriptions würden daher nie ausgespielt.
 
 `_seo_urls` löst dieses Problem automatisch: Es liest nach `handleRequest()` die `plugin.conf.php` von `MetaKeywordsDescription` direkt aus und setzt `{WEBSITE_DESCRIPTION}` und `{WEBSITE_KEYWORDS}` im Template zum richtigen Zeitpunkt.
 
