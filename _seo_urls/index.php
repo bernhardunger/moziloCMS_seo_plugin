@@ -4,19 +4,21 @@ if (!defined('IS_CMS')) die();
 /**
  * Plugin:   seo_urls
  * @author:  B.Unger
- * @version: v1.3.0  (siehe Klassenkonstante VERSION)
+ * @version: v1.3.1  (siehe Klassenkonstante VERSION)
  * @license: GPL
  *
  * Wandelt Kategorie- und Seitennamen in SEO-freundliche URL-Slugs um.
  * Läuft als plugin_first — vor createGetCatPageFromModRewrite().
  *
- * Änderungen gegenüber v1.2.2:
- *  - neu: Kompatibilität mit MetaKeywordsDescription Plugin
- *         Liest dessen plugin.conf.php und setzt {WEBSITE_DESCRIPTION} und
- *         {WEBSITE_KEYWORDS} zum richtigen Zeitpunkt im Template –
- *         nach handleRequest(), wenn $_GET['cat'] und $_GET['page'] bereits
- *         korrekt gesetzt sind. Funktioniert nur wenn MetaKeywordsDescription
- *         installiert ist, andernfalls passiert nichts.
+ * Änderungen gegenüber v1.3.0:
+ *  - neu: .htaccess-Prüfung in getInfo() – zeigt roten Hinweis wenn die
+ *         erforderlichen Catch-All-Regeln fehlen, grünen Status wenn korrekt
+ *  - neu: isHtaccessValid() – Plugin deaktiviert sich automatisch wenn die
+ *         .htaccess-Konfiguration unvollständig ist, um den Admin-Bereich
+ *         vor unzugänglichen Zuständen zu schützen
+ *  - neu: Voraussetzungen klar dokumentiert (moziloCMS 3.0.x, PHP 8.1+)
+ *  - neu: Deutlicher Hinweis dass kein template.html-Eintrag nötig ist
+ *  - fix: file_get_contents()-Rückgabe in checkHtaccess() abgesichert
  */
 
 class _seo_urls extends Plugin {
@@ -46,7 +48,14 @@ class _seo_urls extends Plugin {
      */
     private static $redirector = null;
 
-    const VERSION = 'v1.3.0';
+    /**
+     * Cache für das Ergebnis der .htaccess-Prüfung.
+     * null = noch nicht geprüft, true = gültig, false = ungültig.
+     * Verhindert mehrfaches Lesen der .htaccess pro Request.
+     */
+    private static $htaccessValid = null;
+
+    const VERSION = 'v1.3.1';
 
     const SYSTEM_PATHS = array(
         'admin',
@@ -76,6 +85,12 @@ class _seo_urls extends Plugin {
 
     function getPluginContent($value) {
         if ($value === 'plugin_first') {
+
+            // .htaccess-Prüfung: Plugin deaktiviert sich wenn Konfiguration unvollständig.
+            // Verhindert dass eine fehlerhafte .htaccess den Admin-Bereich unzugänglich macht.
+            if (!self::isHtaccessValid()) {
+                return '';
+            }
 
             self::buildMaps();
 
@@ -120,9 +135,28 @@ class _seo_urls extends Plugin {
 
     function getInfo() {
 
+        $htaccessStatus = self::checkHtaccess();
+
         $description = '
 <p>Wandelt Kategorie- und Seitennamen in SEO-freundliche URL-Slugs um.
 Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrite()</code>.</p>
+
+' . $htaccessStatus . '
+
+<h4 style="color:#000;font-weight:bold;">Voraussetzungen</h4>
+<table>
+  <tr><td><b>moziloCMS</b></td><td>3.0.x oder höher (moziloCMS 2.x wird nicht unterstützt)</td></tr>
+  <tr><td><b>PHP</b></td><td>8.1 oder höher</td></tr>
+  <tr><td><b>.htaccess</b></td><td>Catch-All-Regeln erforderlich – siehe htaccess_snippet.txt</td></tr>
+</table>
+
+<h4 style="color:#000;font-weight:bold;">Wichtige Hinweise zur Installation</h4>
+<ul>
+  <li>Das Plugin wird im Admin-Bereich unter <b>Plugins</b> aktiviert &ndash; kein weiterer Aufruf in der <code>template.html</code> oder in einer Inhaltsseite notwendig.</li>
+  <li>Die <code>.htaccess</code> muss manuell um die Catch-All-Regeln aus <code>htaccess_snippet.txt</code> erg&auml;nzt werden &ndash; ohne diese Regeln werden Slug-URLs mit &ldquo;Not Found&rdquo; beantwortet.</li>
+  <li>Sind die Catch-All-Regeln unvollst&auml;ndig oder fehlerhaft, deaktiviert sich das Plugin automatisch um den Admin-Bereich zu sch&uuml;tzen.</li>
+  <li>HTTPS- und WWW-Weiterleitung m&uuml;ssen ebenfalls in der <code>.htaccess</code> eingetragen werden (Domain anpassen).</li>
+</ul>
 
 <h4>Funktionen</h4>
 <table>
@@ -146,7 +180,9 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
         $info = array(
             '<b>seo_urls</b> ' . self::VERSION,
-            '2.0 / 3.0',
+            '2.0 / 3.0',  // Hinweis: moziloCMS prüft ob '2' im String enthalten ist.
+            // Fehlt die '2', deaktiviert der Admin das Plugin automatisch.
+            // Das Plugin unterstützt nur moziloCMS 3.0.x – siehe getInfo().
             $description,
             '',
             '',
@@ -292,6 +328,13 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
     /**
      * Sendet einen HTTP-Redirect und beendet die Ausführung.
+     *
+     * Im Normalbetrieb: header() + exit.
+     * In PHPUnit-Tests: $redirector-Callback wird aufgerufen (kein exit),
+     * damit der Test-Runner nach dem Redirect-Aufruf weiterlaufen kann.
+     *
+     * @param string $url   Ziel-URL (absolut oder relativ)
+     * @param int    $code  HTTP-Statuscode (Standard: 301)
      */
     protected static function redirect(string $url, int $code = 301): void {
         if (self::$redirector !== null) {
@@ -308,6 +351,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
     /**
      * Gibt den validierten Origin (Schema + Host) zurück.
+     * Liefert einen leeren String wenn HTTP_HOST ungültig ist (z.B. Header-Injection).
      */
     private static function getSafeOrigin(): string {
         $rawHost = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
@@ -316,6 +360,88 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
         }
         $scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         return $scheme . '://' . $rawHost;
+    }
+
+    // -----------------------------------------------------------------------
+    // .htaccess-Prüfung
+    // -----------------------------------------------------------------------
+
+    /**
+     * Prüft ob die .htaccess die erforderlichen Catch-All-Regeln enthält.
+     * Ergebnis wird gecacht – die Datei wird nur einmal pro Request gelesen.
+     *
+     * Designentscheidungen:
+     *  - BASE_DIR nicht definiert → true  (nicht prüfbar, laufen lassen)
+     *  - .htaccess nicht lesbar  → true  (kein falsches Deaktivieren bei Rechteproblemen)
+     *  - .htaccess fehlt         → false (Plugin deaktiviert sich)
+     *  - Catch-All fehlt         → false (Plugin deaktiviert sich)
+     */
+    private static function isHtaccessValid(): bool {
+        if (self::$htaccessValid !== null) {
+            return self::$htaccessValid;
+        }
+        if (!defined('BASE_DIR')) {
+            self::$htaccessValid = true;
+            return true;
+        }
+        $htaccess = BASE_DIR . '.htaccess';
+        if (!file_exists($htaccess)) {
+            self::$htaccessValid = false;
+            return false;
+        }
+        $content = file_get_contents($htaccess);
+        if ($content === false) {
+            self::$htaccessValid = true;
+            return true;
+        }
+
+        // Catch-All-Regel prüfen – entweder mit seourls-Marker (CMS-Kern-Integration)
+        // oder als manuelle Regel (Plugin-Installation)
+        $hasSeourlsBlock = strpos($content, '# seourls_begin') !== false;
+        $hasCatchAll     = (bool) preg_match(
+            '/RewriteCond\s+%\{REQUEST_FILENAME\}\s+!-f\s+RewriteCond\s+%\{REQUEST_FILENAME\}\s+!-d\s+RewriteRule\s+\^\(\.\*\)\$\s+index\.php/s',
+            $content
+        );
+
+        self::$htaccessValid = $hasSeourlsBlock || $hasCatchAll;
+        return self::$htaccessValid;
+    }
+
+    /**
+     * Gibt einen HTML-Statusblock für die Admin-Anzeige zurück.
+     * Grün = .htaccess korrekt konfiguriert, Rot = Fehler.
+     * Wird nur in getInfo() aufgerufen.
+     */
+    private static function checkHtaccess(): string {
+        if (!defined('BASE_DIR')) {
+            return '';
+        }
+        $htaccess = BASE_DIR . '.htaccess';
+        if (!file_exists($htaccess)) {
+            return '<p style="color:red;font-weight:bold;">&#9888; .htaccess nicht gefunden.</p>';
+        }
+        $content = file_get_contents($htaccess);
+        if ($content === false) {
+            return '';
+        }
+
+        $hasSeourlsBlock = strpos($content, '# seourls_begin') !== false;
+        $hasCatchAll     = (bool) preg_match(
+            '/RewriteCond\s+%\{REQUEST_FILENAME\}\s+!-f\s+RewriteCond\s+%\{REQUEST_FILENAME\}\s+!-d\s+RewriteRule\s+\^\(\.\*\)\$\s+index\.php/s',
+            $content
+        );
+
+        if (!$hasSeourlsBlock && !$hasCatchAll) {
+            return '<p style="color:red;font-weight:bold;">'
+                . '&#9888; PLUGIN DEAKTIVIERT: Die Catch-All-Regeln in der .htaccess '
+                . 'sind unvollst&auml;ndig oder fehlen. Das Plugin hat sich zum Schutz '
+                . 'des Admin-Bereichs automatisch deaktiviert. '
+                . 'Bitte .htaccess korrigieren und Seite neu laden. '
+                . 'Siehe README.md und htaccess_snippet.txt.'
+                . '</p>';
+        }
+
+        return '<p style="color:green;">&#10003; .htaccess korrekt konfiguriert.</p>';
     }
 
     // -----------------------------------------------------------------------
