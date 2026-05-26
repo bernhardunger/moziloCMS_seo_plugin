@@ -13,6 +13,7 @@ Wandelt Kategorie- und Seitennamen in saubere, Google-freundliche URL-Slugs um.
 | **Kollisionsschutz** | Identische Slugs erhalten automatisch ein Suffix (`-2`, `-3` …) |
 | **Sitemap-kompatibel** | `?action=sitemap` funktioniert unverändert, Links werden ebenfalls umgeschrieben |
 | **MetaKeywordsDescription** | Individuelle Meta-Descriptions und Keywords pro Seite werden korrekt ausgespielt |
+| **.htaccess-Prüfung** | Plugin prüft beim Start die .htaccess-Konfiguration und deaktiviert sich bei Fehlern automatisch |
 
 **Beispiele:**
 
@@ -21,6 +22,16 @@ Wandelt Kategorie- und Seitennamen in saubere, Google-freundliche URL-Slugs um.
 | `/Über Uns/` | `/ueber-uns/` |
 | `/Über Uns/Unser Team/` | `/ueber-uns/unser-team/` |
 | `/Häufige Fragen/` | `/haeufige-fragen/` |
+
+---
+
+## Voraussetzungen
+
+| | |
+|---|---|
+| **moziloCMS** | 3.0.x oder höher (moziloCMS 2.x wird nicht unterstützt) |
+| **PHP** | 8.1 oder höher |
+| **.htaccess** | Catch-All-Regeln erforderlich – siehe Installation |
 
 ---
 
@@ -34,6 +45,8 @@ Da moziloCMS `plugin_first`-Plugins alphabetisch nach Ordnernamen lädt und Gro�
 Browser: GET /ueber-uns/team/
         ↓
 .htaccess: Slug-Muster erkannt → index.php (REQUEST_URI bleibt erhalten)
+        ↓
+plugin_first: .htaccess-Prüfung → ok
         ↓
 plugin_first: "ueber-uns" ist Slug → auflösen →
   $_GET['cat'] = "Über Uns"
@@ -107,7 +120,16 @@ RewriteRule ^(.*)$ index.php [QSA,L]
 
 Im moziloCMS Admin-Panel → Plugins → `seo_urls` aktivieren.
 
+> **Wichtig:** Das Plugin wird ausschließlich über den Admin-Bereich aktiviert – kein zusätzlicher Aufruf in der `template.html` oder einer Inhaltsseite notwendig.
+
 Den Debug-Modus in der Plugin-Konfiguration nur im Testbetrieb aktivieren und vor dem Go-Live wieder deaktivieren.
+
+### 4. .htaccess-Status prüfen
+
+Nach der Aktivierung im Admin-Bereich unter **Plugins → seo_urls** den Info-Tab prüfen:
+
+- ✅ **Grün**: `.htaccess` korrekt konfiguriert – Plugin läuft
+- ❌ **Rot**: Catch-All-Regeln fehlen oder sind unvollständig – Plugin hat sich automatisch deaktiviert, `.htaccess` korrigieren und Seite neu laden
 
 ---
 
@@ -134,6 +156,10 @@ Falls moziloCMS nicht im Webroot, sondern in einem Unterverzeichnis läuft (z. B
 ### Titeländerungen im Admin
 
 Wird ein Kategorie- oder Seitenname im Admin umbenannt, ändert sich der zugehörige Slug. Bestehende Bookmarks oder externe Links auf den alten Slug laufen dann ins Leere. In diesem Fall empfiehlt es sich, den alten Slug manuell als statische `Redirect`-Regel in der `.htaccess` einzutragen.
+
+### Versteckte Seiten mit moziloCMS-internen Parametern
+
+URLs der Form `/Kategorie/Seite.html?cat=Kategorie&page=114&action=114` werden vom Plugin nicht angefasst – moziloCMS verarbeitet diese Parameter direkt. Das Plugin erkennt solche URLs anhand des `QUERY_STRING` und greift nicht ein.
 
 ---
 

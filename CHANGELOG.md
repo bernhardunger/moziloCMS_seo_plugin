@@ -4,6 +4,35 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
 
 ---
 
+## [v1.3.1] – 2026-05-26
+
+### Neu
+- **Automatische .htaccess-Prüfung**: Das Plugin prüft beim Start ob die
+  erforderlichen Catch-All-Regeln in der `.htaccess` vorhanden sind.
+  Fehlen sie oder sind sie unvollständig, deaktiviert sich das Plugin automatisch
+  um den Admin-Bereich vor unzugänglichen Zuständen zu schützen.
+  Im Admin-Bereich (Plugin-Info-Tab) wird der Status direkt angezeigt:
+  grün = korrekt konfiguriert, rot = PLUGIN DEAKTIVIERT.
+- **Verbesserte Installationshinweise in `getInfo()`**: Voraussetzungen klar
+  dokumentiert (moziloCMS 3.0.x, PHP 8.1+), deutlicher Hinweis dass kein
+  `template.html`-Eintrag nötig ist, `.htaccess`-Anforderungen direkt im Admin sichtbar.
+
+### Technische Details
+- `isHtaccessValid()` neu: gecachte Prüfung der `.htaccess` (einmal pro Request).
+  Designentscheidungen: `BASE_DIR` nicht definiert → laufen lassen;
+  Datei nicht lesbar → laufen lassen; Datei fehlt oder Catch-All unvollständig → deaktivieren.
+- `checkHtaccess()` neu: HTML-Statusanzeige (grün/rot) für den Admin-Info-Tab.
+- `$htaccessValid` neu: statisches Cache-Property (null/true/false).
+- Versionsstring `'2.0 / 3.0'` beibehalten – moziloCMS Admin prüft ob `'2'`
+  im String enthalten ist; fehlt die `'2'`, deaktiviert der Admin das Plugin
+  automatisch (Bug in `admin/plugins.php` – keine Prüfung auf `'3'`).
+
+### Tests
+- 58 Tests, alle grün
+- Keine neuen Tests (getInfo() und checkHtaccess() sind Admin-Methoden)
+
+---
+
 ## [v1.3.0] – 2026-04-30
 
 ### Neu
@@ -37,6 +66,8 @@ Plugins bei jedem Request.
 - Bestehende 57 Tests weiterhin grün
 - Manuell getestet mit moziloCMS 3.0.x und MetaKeywordsDescription Plugin
 
+---
+
 ## [v1.2.2] – 2026-04-28
 
 ### Behoben
@@ -46,12 +77,18 @@ Plugins bei jedem Request.
   Query-String verloren und moziloCMS konnte die Zielseite nicht mehr finden.
   Betroffen waren vor allem versteckte Seiten die über interne moziloCMS-Parameter
   direkt angesteuert werden.
-  `handleRequest()` prüft jetzt zu Beginn ob `$_GET['cat']` oder `$_GET['page']`
-  bereits gesetzt sind und greift in diesem Fall nicht ein.
+  `handleRequest()` prüft jetzt zu Beginn ob `cat`/`page` bereits im
+  `$_SERVER['QUERY_STRING']` stehen und greift in diesem Fall nicht ein.
+  Hinweis: die Prüfung erfolgt auf `QUERY_STRING` (nicht `$_GET`), da moziloCMS
+  `$_GET['cat']` intern selbst setzt – eine `$_GET`-Prüfung würde reguläre
+  Seitenaufrufe fälschlicherweise blockieren.
 
 ### Tests
-- 1 neuer Test: `testHandleRequestGetMoziloCmsQueryParamsWerdenIgnoriert()`
-- 57 Tests, alle grün
+- 2 neue Tests: `testHandleRequestGetMoziloCmsQueryParamsWerdenIgnoriert()`
+  und `testHandleRequestGetSlugOhneMoziloCmsQueryParamsWirdVerarbeitet()`
+- 58 Tests, alle grün
+
+---
 
 ## [v1.2.1] – 2026-04-19
 
