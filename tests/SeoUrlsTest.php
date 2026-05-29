@@ -688,6 +688,101 @@ class SeoUrlsTest extends TestCase {
         );
     }
 
+    // -----------------------------------------------------------------------
+    // parseHtaccessRules()
+    // -----------------------------------------------------------------------
+
+    /**
+     * Hilfsmethode: erzeugt eine .htaccess-Beispielinhalt mit allen Regeln.
+     */
+    private static function htaccessFull(): string {
+        return implode("\n", [
+            'RewriteEngine On',
+            'RewriteRule ^sitemap\.xml$ index.php [L,QSA]',
+            'RewriteCond %{REQUEST_FILENAME} !-f',
+            'RewriteCond %{REQUEST_FILENAME} !-d',
+            'RewriteRule ^(.*)$ index.php [QSA,L]',
+        ]);
+    }
+
+    public function testParseHtaccessRulesAlleRegelnVorhanden(): void {
+        $rules = self::callStatic('parseHtaccessRules', self::htaccessFull());
+        $this->assertTrue($rules['hasSitemap']);
+        $this->assertTrue($rules['hasCatchAll']);
+    }
+
+    public function testParseHtaccessRulesSitemapFehlt(): void {
+        $content = implode("\n", [
+            'RewriteEngine On',
+            'RewriteCond %{REQUEST_FILENAME} !-f',
+            'RewriteCond %{REQUEST_FILENAME} !-d',
+            'RewriteRule ^(.*)$ index.php [QSA,L]',
+        ]);
+        $rules = self::callStatic('parseHtaccessRules', $content);
+        $this->assertFalse($rules['hasSitemap']);
+        $this->assertTrue($rules['hasCatchAll']);
+    }
+
+    public function testParseHtaccessRulesSitemapAuskommentiert(): void {
+        $content = implode("\n", [
+            'RewriteEngine On',
+            '# RewriteRule ^sitemap\.xml$ index.php [L,QSA]',
+            'RewriteCond %{REQUEST_FILENAME} !-f',
+            'RewriteCond %{REQUEST_FILENAME} !-d',
+            'RewriteRule ^(.*)$ index.php [QSA,L]',
+        ]);
+        $rules = self::callStatic('parseHtaccessRules', $content);
+        $this->assertFalse(
+            $rules['hasSitemap'],
+            'Auskommentierte Sitemap-Regel darf nicht als aktiv erkannt werden'
+        );
+        $this->assertTrue($rules['hasCatchAll']);
+    }
+
+    public function testParseHtaccessRulesCatchAllFehlt(): void {
+        $content = implode("\n", [
+            'RewriteEngine On',
+            'RewriteRule ^sitemap\.xml$ index.php [L,QSA]',
+        ]);
+        $rules = self::callStatic('parseHtaccessRules', $content);
+        $this->assertTrue($rules['hasSitemap']);
+        $this->assertFalse($rules['hasCatchAll']);
+    }
+
+    public function testParseHtaccessRulesEineRewriteCondAuskommentiert(): void {
+        $content = implode("\n", [
+            'RewriteEngine On',
+            'RewriteRule ^sitemap\.xml$ index.php [L,QSA]',
+            '# RewriteCond %{REQUEST_FILENAME} !-f',
+            'RewriteCond %{REQUEST_FILENAME} !-d',
+            'RewriteRule ^(.*)$ index.php [QSA,L]',
+        ]);
+        $rules = self::callStatic('parseHtaccessRules', $content);
+        $this->assertTrue($rules['hasSitemap']);
+        $this->assertFalse(
+            $rules['hasCatchAll'],
+            'Catch-All darf nicht als aktiv gelten wenn eine RewriteCond auskommentiert ist'
+        );
+    }
+
+    public function testParseHtaccessRulesAllesFehlt(): void {
+        $content = 'RewriteEngine On';
+        $rules   = self::callStatic('parseHtaccessRules', $content);
+        $this->assertFalse($rules['hasSitemap']);
+        $this->assertFalse($rules['hasCatchAll']);
+    }
+
+    public function testIsHtaccessValidMitAllenRegeln(): void {
+        // parseHtaccessRules() direkt testen da isHtaccessValid()
+        // auf das Dateisystem zugreift
+        $rules = self::callStatic('parseHtaccessRules', self::htaccessFull());
+        $this->assertTrue($rules['hasSitemap'] && $rules['hasCatchAll']);
+    }
+
+    public function testIsHtaccessValidMitFehlendenRegeln(): void {
+        $rules = self::callStatic('parseHtaccessRules', 'RewriteEngine On');
+        $this->assertFalse($rules['hasSitemap'] && $rules['hasCatchAll']);
+    }
 
 
     // -----------------------------------------------------------------------
