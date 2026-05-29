@@ -4,21 +4,24 @@ if (!defined('IS_CMS')) die();
 /**
  * Plugin:   seo_urls
  * @author:  B.Unger
- * @version: v1.3.1  (siehe Klassenkonstante VERSION)
+ * @version: v1.3.2  (siehe Klassenkonstante VERSION)
  * @license: GPL
  *
  * Wandelt Kategorie- und Seitennamen in SEO-freundliche URL-Slugs um.
  * Läuft als plugin_first — vor createGetCatPageFromModRewrite().
  *
- * Änderungen gegenüber v1.3.0:
- *  - neu: .htaccess-Prüfung in getInfo() – zeigt roten Hinweis wenn die
- *         erforderlichen Catch-All-Regeln fehlen, grünen Status wenn korrekt
- *  - neu: isHtaccessValid() – Plugin deaktiviert sich automatisch wenn die
- *         .htaccess-Konfiguration unvollständig ist, um den Admin-Bereich
- *         vor unzugänglichen Zuständen zu schützen
- *  - neu: Voraussetzungen klar dokumentiert (moziloCMS 3.0.x, PHP 8.1+)
- *  - neu: Deutlicher Hinweis dass kein template.html-Eintrag nötig ist
- *  - fix: file_get_contents()-Rückgabe in checkHtaccess() abgesichert
+ * Änderungen gegenüber v1.3.1:
+ *  - neu: isHtaccessValid() prüft jetzt zusätzlich die Sitemap-Regel
+ *         (RewriteRule ^sitemap\.xml$ index.php [L,QSA])
+ *  - neu: checkHtaccess() zeigt spezifische Fehlermeldungen je nach
+ *         fehlendem Eintrag (Sitemap-Regel, Catch-All-Regeln oder beides)
+ *  - refactor: parseHtaccessRules() extrahiert – Regex-Muster an einer
+ *              einzigen Stelle definiert, keine Redundanz mehr
+ *  - refactor: $htaccessValid Cache entfernt – verhindert Probleme bei
+ *              PHP-FPM/OPcache wo statische Properties zwischen Requests
+ *              im selben Worker erhalten bleiben können
+ *  - fix: parseHtaccessRules() erkennt jetzt auskommentierte Regeln korrekt
+ *         als inaktiv (# RewriteRule ... wird nicht mehr als aktiv gewertet)
  */
 
 class _seo_urls extends Plugin {
@@ -48,14 +51,7 @@ class _seo_urls extends Plugin {
      */
     private static $redirector = null;
 
-    /**
-     * Cache für das Ergebnis der .htaccess-Prüfung.
-     * null = noch nicht geprüft, true = gültig, false = ungültig.
-     * Verhindert mehrfaches Lesen der .htaccess pro Request.
-     */
-    private static $htaccessValid = null;
-
-    const VERSION = 'v1.3.1';
+    const VERSION = 'v1.3.2';
 
     const SYSTEM_PATHS = array(
         'admin',
@@ -147,14 +143,14 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 <table>
   <tr><td><b>moziloCMS</b></td><td>3.0.x oder höher (moziloCMS 2.x wird nicht unterstützt)</td></tr>
   <tr><td><b>PHP</b></td><td>8.1 oder höher</td></tr>
-  <tr><td><b>.htaccess</b></td><td>Catch-All-Regeln erforderlich – siehe htaccess_snippet.txt</td></tr>
+  <tr><td><b>.htaccess</b></td><td>Sitemap-Regel und Catch-All-Regeln erforderlich – siehe htaccess_snippet.txt</td></tr>
 </table>
 
 <h4 style="color:#000;font-weight:bold;">Wichtige Hinweise zur Installation</h4>
 <ul>
   <li>Das Plugin wird im Admin-Bereich unter <b>Plugins</b> aktiviert &ndash; kein weiterer Aufruf in der <code>template.html</code> oder in einer Inhaltsseite notwendig.</li>
-  <li>Die <code>.htaccess</code> muss manuell um die Catch-All-Regeln aus <code>htaccess_snippet.txt</code> erg&auml;nzt werden &ndash; ohne diese Regeln werden Slug-URLs mit &ldquo;Not Found&rdquo; beantwortet.</li>
-  <li>Sind die Catch-All-Regeln unvollst&auml;ndig oder fehlerhaft, deaktiviert sich das Plugin automatisch um den Admin-Bereich zu sch&uuml;tzen.</li>
+  <li>Die <code>.htaccess</code> muss manuell um die Sitemap-Regel und die Catch-All-Regeln aus <code>htaccess_snippet.txt</code> erg&auml;nzt werden &ndash; ohne diese Regeln werden Slug-URLs mit &ldquo;Not Found&rdquo; beantwortet.<br /><b>Wichtig:</b> Die Regeln immer vollst&auml;ndig eintragen oder vollst&auml;ndig entfernen &ndash; eine teilweise Konfiguration kann den Admin-Bereich unzug&auml;nglich machen.</li>
+  <li>Sind die erforderlichen Regeln unvollst&auml;ndig, fehlerhaft oder auskommentiert, deaktiviert sich das Plugin automatisch um den Admin-Bereich zu sch&uuml;tzen.</li>
   <li>HTTPS- und WWW-Weiterleitung m&uuml;ssen ebenfalls in der <code>.htaccess</code> eingetragen werden (Domain anpassen).</li>
 </ul>
 
@@ -341,7 +337,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             call_user_func(self::$redirector, $url, $code);
             return;
         }
-        header('Location: ' . $url, true, $code);
+        header('Location: ' . str_replace(["\r", "\n"], '', $url), true, $code);
         exit;
     }
 
@@ -367,49 +363,91 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     // -----------------------------------------------------------------------
 
     /**
-     * Prüft ob die .htaccess die erforderlichen Catch-All-Regeln enthält.
-     * Ergebnis wird gecacht – die Datei wird nur einmal pro Request gelesen.
+     * Prüft den .htaccess-Inhalt auf die erforderlichen Plugin-Regeln.
+     * Einzige Stelle wo die Regex-Muster definiert sind –
+     * wird von isHtaccessValid() und checkHtaccess() gemeinsam genutzt.
+     *
+     * Regex-Erklärungen:
+     *  ^(?![ \t]*#) → Zeilenanfang (m-Flag), negative Lookahead:
+     *                 kein optionales Whitespace gefolgt von # –
+     *                 auskommentierte Zeilen werden ignoriert
+     *  [ \t]*       → optionales führendes Whitespace vor der Direktive
+     *  m-Flag       → ^ matcht Anfang jeder Zeile
+     *
+     *  Sitemap \\   → matcht echten Backslash \ in der .htaccess
+     *  Sitemap \.   → matcht den Punkt .
+     *  zusammen \\\.→ matcht \. im Zieltext
+     *
+     * Die drei Catch-All-Zeilen werden einzeln geprüft –
+     * so wird erkannt wenn nur eine davon auskommentiert ist.
+     *
+     * @param  string $content  Inhalt der .htaccess-Datei
+     * @return array{hasSitemap: bool, hasCatchAll: bool}
+     */
+    private static function parseHtaccessRules(string $content): array {
+
+        // Sitemap-Regel: RewriteRule ^sitemap\.xml$ index.php [L,QSA]
+        $hasSitemap = (bool) preg_match(
+            '/^(?![ \t]*#)[ \t]*RewriteRule\s+\^sitemap\\\.xml\$\s+index\.php/im',
+            $content
+        );
+
+        // Catch-All: jede der drei Zeilen einzeln prüfen
+        $hasCatchAllF = (bool) preg_match(
+            '/^(?![ \t]*#)[ \t]*RewriteCond\s+%\{REQUEST_FILENAME\}\s+!-f/im',
+            $content
+        );
+        $hasCatchAllD = (bool) preg_match(
+            '/^(?![ \t]*#)[ \t]*RewriteCond\s+%\{REQUEST_FILENAME\}\s+!-d/im',
+            $content
+        );
+        $hasCatchAllRule = (bool) preg_match(
+            '/^(?![ \t]*#)[ \t]*RewriteRule\s+\^\(\.\*\)\$\s+index\.php/im',
+            $content
+        );
+
+        return [
+            'hasSitemap'  => $hasSitemap,
+            'hasCatchAll' => $hasCatchAllF && $hasCatchAllD && $hasCatchAllRule,
+        ];
+    }
+
+    /**
+     * Prüft ob die .htaccess alle erforderlichen Regeln enthält.
+     * Kein Caching – liest die Datei bei jedem Aufruf neu um Probleme mit
+     * PHP-FPM/OPcache zu vermeiden wo statische Properties zwischen Requests
+     * im selben Worker erhalten bleiben können.
+     *
+     * Geprüft wird:
+     *  1. Sitemap-Regel:    RewriteRule ^sitemap\.xml$ index.php [L,QSA]
+     *  2. Catch-All-Regeln: RewriteCond !-f + RewriteCond !-d + RewriteRule ^(.*)$
      *
      * Designentscheidungen:
      *  - BASE_DIR nicht definiert → true  (nicht prüfbar, laufen lassen)
      *  - .htaccess nicht lesbar  → true  (kein falsches Deaktivieren bei Rechteproblemen)
      *  - .htaccess fehlt         → false (Plugin deaktiviert sich)
-     *  - Catch-All fehlt         → false (Plugin deaktiviert sich)
+     *  - Sitemap-Regel fehlt/auskommentiert     → false (Plugin deaktiviert sich)
+     *  - Catch-All fehlt/auskommentiert         → false (Plugin deaktiviert sich)
      */
     private static function isHtaccessValid(): bool {
-        if (self::$htaccessValid !== null) {
-            return self::$htaccessValid;
-        }
         if (!defined('BASE_DIR')) {
-            self::$htaccessValid = true;
             return true;
         }
         $htaccess = BASE_DIR . '.htaccess';
         if (!file_exists($htaccess)) {
-            self::$htaccessValid = false;
             return false;
         }
         $content = file_get_contents($htaccess);
         if ($content === false) {
-            self::$htaccessValid = true;
             return true;
         }
-
-        // Catch-All-Regel prüfen – entweder mit seourls-Marker (CMS-Kern-Integration)
-        // oder als manuelle Regel (Plugin-Installation)
-        $hasSeourlsBlock = strpos($content, '# seourls_begin') !== false;
-        $hasCatchAll     = (bool) preg_match(
-            '/RewriteCond\s+%\{REQUEST_FILENAME\}\s+!-f\s+RewriteCond\s+%\{REQUEST_FILENAME\}\s+!-d\s+RewriteRule\s+\^\(\.\*\)\$\s+index\.php/s',
-            $content
-        );
-
-        self::$htaccessValid = $hasSeourlsBlock || $hasCatchAll;
-        return self::$htaccessValid;
+        $rules = self::parseHtaccessRules($content);
+        return $rules['hasSitemap'] && $rules['hasCatchAll'];
     }
 
     /**
      * Gibt einen HTML-Statusblock für die Admin-Anzeige zurück.
-     * Grün = .htaccess korrekt konfiguriert, Rot = Fehler.
+     * Grün = .htaccess korrekt konfiguriert, Rot = Fehler mit spezifischer Meldung.
      * Wird nur in getInfo() aufgerufen.
      */
     private static function checkHtaccess(): string {
@@ -425,20 +463,23 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             return '';
         }
 
-        $hasSeourlsBlock = strpos($content, '# seourls_begin') !== false;
-        $hasCatchAll     = (bool) preg_match(
-            '/RewriteCond\s+%\{REQUEST_FILENAME\}\s+!-f\s+RewriteCond\s+%\{REQUEST_FILENAME\}\s+!-d\s+RewriteRule\s+\^\(\.\*\)\$\s+index\.php/s',
-            $content
-        );
+        $rules = self::parseHtaccessRules($content);
 
-        if (!$hasSeourlsBlock && !$hasCatchAll) {
+        if (!$rules['hasSitemap'] || !$rules['hasCatchAll']) {
             return '<p style="color:red;font-weight:bold;">'
-                . '&#9888; PLUGIN DEAKTIVIERT: Die Catch-All-Regeln in der .htaccess '
-                . 'sind unvollst&auml;ndig oder fehlen. Das Plugin hat sich zum Schutz '
-                . 'des Admin-Bereichs automatisch deaktiviert. '
-                . 'Bitte .htaccess korrigieren und Seite neu laden. '
-                . 'Siehe README.md und htaccess_snippet.txt.'
-                . '</p>';
+                . '&#9888; PLUGIN DEAKTIVIERT: Die .htaccess-Konfiguration ist unvollst&auml;ndig. '
+                . 'Bitte alle erforderlichen Regeln vollst&auml;ndig eintragen '
+                . 'oder vollst&auml;ndig entfernen &ndash; eine teilweise Konfiguration kann den '
+                . 'Admin-Bereich unzug&auml;nglich machen. '
+                . 'Seite nach Korrektur neu laden.'
+                . '</p>'
+                . '<p><b>Erforderliche Eintr&auml;ge in der .htaccess:</b></p>'
+                . '<pre style="background:#f4f4f4;padding:8px;font-size:12px;">'
+                . 'RewriteRule ^sitemap\.xml$ index.php [L,QSA]' . "\n"
+                . 'RewriteCond %{REQUEST_FILENAME} !-f' . "\n"
+                . 'RewriteCond %{REQUEST_FILENAME} !-d' . "\n"
+                . 'RewriteRule ^(.*)$ index.php [QSA,L]'
+                . '</pre>';
         }
 
         return '<p style="color:green;">&#10003; .htaccess korrekt konfiguriert.</p>';
@@ -602,6 +643,9 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
         }
 
         $xml = file_get_contents($sitemapFile);
+        if ($xml === false) {
+            return;
+        }
 
         $currentOrigin = self::getSafeOrigin();
 
