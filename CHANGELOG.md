@@ -37,7 +37,7 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
   `testRewriteOutputIgnoriertProtokollRelativeUrls()`,
   `testRewriteOutputIgnoriertJavascriptLinks()`,
   `testRewriteOutputIgnoriertDataUris()`
-- Gesamtzahl: 62 Tests
+- Gesamtzahl: 71 Tests
 
 ---
 
