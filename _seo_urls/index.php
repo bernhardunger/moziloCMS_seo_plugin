@@ -337,7 +337,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             call_user_func(self::$redirector, $url, $code);
             return;
         }
-        header('Location: ' . $url, true, $code);
+        header('Location: ' . str_replace(["\r", "\n"], '', $url), true, $code);
         exit;
     }
 
@@ -643,6 +643,9 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
         }
 
         $xml = file_get_contents($sitemapFile);
+        if ($xml === false) {
+            return;
+        }
 
         $currentOrigin = self::getSafeOrigin();
 
