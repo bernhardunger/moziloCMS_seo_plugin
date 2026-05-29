@@ -31,7 +31,7 @@ Wandelt Kategorie- und Seitennamen in saubere, Google-freundliche URL-Slugs um.
 |---|---|
 | **moziloCMS** | 3.0.x oder höher (moziloCMS 2.x wird nicht unterstützt) |
 | **PHP** | 8.1 oder höher |
-| **.htaccess** | Catch-All-Regeln erforderlich – siehe Installation |
+| **.htaccess** | Sitemap-Regel und Catch-All-Regeln erforderlich – siehe Installation |
 
 ---
 
@@ -116,6 +116,8 @@ RewriteRule ^(.*)$ index.php [QSA,L]
 # mozilo_end
 ```
 
+> **Wichtig:** Die Regeln immer vollständig eintragen oder vollständig entfernen – eine teilweise Konfiguration kann den Admin-Bereich unzugänglich machen, da Apache die .htaccess vor PHP verarbeitet.
+
 ### 3. Plugin aktivieren
 
 Im moziloCMS Admin-Panel → Plugins → `seo_urls` aktivieren.
@@ -129,7 +131,7 @@ Den Debug-Modus in der Plugin-Konfiguration nur im Testbetrieb aktivieren und vo
 Nach der Aktivierung im Admin-Bereich unter **Plugins → seo_urls** den Info-Tab prüfen:
 
 - ✅ **Grün**: `.htaccess` korrekt konfiguriert – Plugin läuft
-- ❌ **Rot**: Catch-All-Regeln fehlen oder sind unvollständig – Plugin hat sich automatisch deaktiviert, `.htaccess` korrigieren und Seite neu laden
+- ❌ **Rot**: Regeln fehlen, sind unvollständig oder auskommentiert – Plugin hat sich automatisch deaktiviert. Die erforderlichen Regeln werden direkt im Hinweis angezeigt. Nach Korrektur Seite neu laden.
 
 ---
 

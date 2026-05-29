@@ -4,6 +4,43 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
 
 ---
 
+## [v1.3.2] – 2026-05-29
+
+### Neu
+- **Erweiterte .htaccess-Prüfung**: Neben den Catch-All-Regeln wird jetzt auch die
+  Sitemap-Regel geprüft (`RewriteRule ^sitemap\.xml$ index.php [L,QSA]`).
+  Fehlt eine der erforderlichen Regeln oder ist sie auskommentiert, deaktiviert
+  sich das Plugin automatisch.
+- **Kommentar-Erkennung**: Auskommentierte Regeln (`# RewriteRule ...`) werden
+  korrekt als inaktiv erkannt – sie galten vorher fälschlicherweise als vorhanden.
+- **Snippet-Ausgabe im Fehlerfall**: Die Fehlermeldung im Admin-Info-Tab zeigt
+  jetzt direkt die erforderlichen .htaccess-Regeln an – kein separates Nachschlagen
+  in README oder htaccess_snippet.txt nötig.
+- **Installationshinweis**: Regeln immer vollständig eintragen oder vollständig
+  entfernen – eine teilweise Konfiguration kann den Admin-Bereich unzugänglich
+  machen (Apache verarbeitet .htaccess vor PHP).
+
+### Refactoring
+- **`parseHtaccessRules(string $content): array`** neu: zentrale Methode für alle
+  Regex-Prüfungen, wird von `isHtaccessValid()` und `checkHtaccess()` gemeinsam
+  genutzt – keine Regex-Redundanz mehr.
+  Die drei Catch-All-Zeilen werden einzeln geprüft, sodass auch teilweise
+  Auskommentierung erkannt wird.
+- **`$htaccessValid` Cache entfernt**: Kein Caching mehr um Probleme mit PHP-FPM/
+  OPcache zu vermeiden, wo statische Properties zwischen Requests im selben Worker
+  erhalten bleiben können.
+
+### Technische Details
+- Regex `^(?![ \t]*#)` mit `m`-Flag: negativer Lookahead ignoriert auskommentierte Zeilen
+- Sitemap-Regex `\\\.`: `\\` matcht echten Backslash, `\.` matcht Punkt im Zieltext
+
+### Tests
+- 8 neue Tests für `parseHtaccessRules()`: valide Konfiguration, fehlende Regeln,
+  auskommentierte Regeln, teilweise Auskommentierung
+- 66 Tests, alle grün
+
+---
+
 ## [v1.3.1] – 2026-05-26
 
 ### Neu
@@ -18,11 +55,10 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
   `template.html`-Eintrag nötig ist, `.htaccess`-Anforderungen direkt im Admin sichtbar.
 
 ### Technische Details
-- `isHtaccessValid()` neu: gecachte Prüfung der `.htaccess` (einmal pro Request).
+- `isHtaccessValid()` neu: Prüfung der `.htaccess`, kein Caching.
   Designentscheidungen: `BASE_DIR` nicht definiert → laufen lassen;
   Datei nicht lesbar → laufen lassen; Datei fehlt oder Catch-All unvollständig → deaktivieren.
 - `checkHtaccess()` neu: HTML-Statusanzeige (grün/rot) für den Admin-Info-Tab.
-- `$htaccessValid` neu: statisches Cache-Property (null/true/false).
 - Versionsstring `'2.0 / 3.0'` beibehalten – moziloCMS Admin prüft ob `'2'`
   im String enthalten ist; fehlt die `'2'`, deaktiviert der Admin das Plugin
   automatisch (Bug in `admin/plugins.php` – keine Prüfung auf `'3'`).
@@ -40,9 +76,6 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
   MetaKeywordsDescription Plugins (falls installiert) und setzt `{WEBSITE_DESCRIPTION}`
   und `{WEBSITE_KEYWORDS}` zum richtigen Zeitpunkt im Template – nach `handleRequest()`,
   wenn `$_GET['cat']` und `$_GET['page']` bereits korrekt gesetzt sind.
-  Dadurch werden individuelle Meta-Angaben pro Seite korrekt ausgespielt, obwohl
-  MetaKeywordsDescription alphabetisch vor `_seo_urls` geladen wird und die
-  `$_GET`-Parameter zu diesem Zeitpunkt noch nicht gesetzt sind.
   Ist MetaKeywordsDescription nicht installiert, passiert nichts – vollständig
   rückwärtskompatibel.
 
@@ -50,8 +83,7 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
 Das `MetaKeywordsDescription` Plugin kann nach dem Befüllen der Descriptions
 **deaktiviert** werden – `_seo_urls` liest die `plugin.conf.php` direkt und
 befüllt die Platzhalter selbst. Das Plugin muss nur zum **Pflegen der Inhalte**
-aktiviert werden. Im deaktivierten Zustand entfällt der unnötige Durchlauf des
-Plugins bei jedem Request.
+aktiviert werden.
 
 ### Technische Details
 - `applyMetaKeywordsDescription()` neu: liest und deserialisiert `plugin.conf.php`,
@@ -60,7 +92,6 @@ Plugins bei jedem Request.
 - Neue Klassenkonstante `META_PLUGIN_NAME` für den Plugin-Namen (einzige Pflegestelle).
 - `PLUGIN_DIR` Fallback auf `BASE_DIR . 'plugins/'` für moziloCMS 3.0.x Kompatibilität.
 - `empty()` statt `isset()` für `$_GET['page']` – moziloCMS setzt `false` bei Kategorie-Einstiegsseiten.
-- `get_FirstPageOfCat()` ohne vorherige `exists_CatPage()`-Prüfung – robuster und direkt.
 
 ### Tests
 - Bestehende 57 Tests weiterhin grün
@@ -121,47 +152,36 @@ Plugins bei jedem Request.
 - **Homepage-Redirect**: Die erste CMS-Kategorie (z.B. „Startseite") wird jetzt
   generisch erkannt und löst einen direkten 301-Redirect auf `/` aus —
   unabhängig vom tatsächlichen Kategorienamen.
-  Betroffen waren `/startseite/` und `/Startseite.html`, die vorher eine
-  zweistufige Redirect-Kette erzeugten und als Duplicate Content crawlbar blieben.
 - **Canonical-Tag-Korrektur**: moziloCMS setzt bei Kategorie-Einstiegsseiten
-  (Aufruf ohne explizite Unterseite, z.B. `/kontakt/`) als `<link rel="canonical">`
-  die erste Unterseite der Kategorie. `rewriteOutput()` überschreibt diesen Tag
-  jetzt mit der korrekten Slug-URL der tatsächlich aufgerufenen Seite.
+  als `<link rel="canonical">` die erste Unterseite. `rewriteOutput()` überschreibt
+  diesen Tag jetzt mit der korrekten Slug-URL der tatsächlich aufgerufenen Seite.
 
 ### Neu
-- Static property `$homeCatName`: speichert den URL-kodierten Namen der ersten
-  CMS-Kategorie als Homepage-Referenz (wird in `buildMaps()` befüllt).
-- Static property `$resolvedCanonicalPath`: speichert den kanonischen Slug-Pfad
-  der aktuellen Anfrage (wird in `handleRequest()` gesetzt, in `rewriteOutput()` genutzt).
+- Static property `$homeCatName` und `$resolvedCanonicalPath`.
 
 ---
 
 ## [v1.1.2] – 2025
 
 ### Behoben
-- HTTP_HOST wird vor Verwendung in der Sitemap-XML validiert und bereinigt
-  (verhindert Header-Injection).
+- HTTP_HOST-Validierung vor Verwendung in der Sitemap-XML (verhindert Header-Injection).
 - `isSlug()` verbietet jetzt auch trailing Bindestriche.
 - `buildSlugUrl()` erzeugt keine doppelten Trailing-Slash-Redirects mehr.
 
 ### Verbessert
-- `SYSTEM_PATHS` als Klassenkonstante (kein Array-Rebuild per Request).
-- `slugify()`-Map als `static` Variable (kein Array-Rebuild pro Aufruf).
-- `makeUnique()` nutzt `isset()`-Hash-Lookup O(1) statt `in_array()` O(n).
-- `rewriteOutput()` verarbeitet `href` und `action` in einem einzigen Regex-Durchlauf.
-- `stripHtmlSuffix()`-Hilfsmethode eingeführt (DRY – 3-fache Duplizierung entfernt).
-- `REQUEST_METHOD` mit sicherem Default-Wert abgesichert.
+- `SYSTEM_PATHS` als Klassenkonstante, `slugify()`-Map als `static` Variable.
+- `makeUnique()` mit O(1) Hash-Lookup, `rewriteOutput()` in einem Regex-Durchlauf.
+- `stripHtmlSuffix()`-Hilfsmethode eingeführt (DRY).
 
 ---
 
 ## [v1.1.1] – 2025
 
 ### Behoben
-- 301-Redirect für `.html`-Suffix-URLs (z.B. `/ueber-uns.html` → `/ueber-uns/`)
-  verhindert Duplicate Content zwischen beiden URL-Varianten.
+- 301-Redirect für `.html`-Suffix-URLs verhindert Duplicate Content.
 
 ### Neu
-- Versionsstring als Klassenkonstante `VERSION` (einzige Pflegestelle).
+- Versionsstring als Klassenkonstante `VERSION`.
 
 ---
 
@@ -170,7 +190,7 @@ Plugins bei jedem Request.
 ### Behoben
 - POST-Requests werden nicht mehr weitergeleitet (Formulardaten gingen verloren).
 - Draft-Modus (`?draft=true`) wird korrekt durchgereicht.
-- i18n-Query-Parameter (`?i18n=en`) bleiben bei Slug-URLs erhalten.
+- i18n-Query-Parameter bleiben bei Slug-URLs erhalten.
 - Sitemap-Hostname wird korrekt aus dem aktuellen Request bezogen.
 
 ---
