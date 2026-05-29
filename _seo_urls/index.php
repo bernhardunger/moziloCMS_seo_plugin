@@ -4,24 +4,22 @@ if (!defined('IS_CMS')) die();
 /**
  * Plugin:   seo_urls
  * @author:  B.Unger
- * @version: v1.3.2  (siehe Klassenkonstante VERSION)
+ * @version: v1.3.3  (siehe Klassenkonstante VERSION)
  * @license: GPL
  *
  * Wandelt Kategorie- und Seitennamen in SEO-freundliche URL-Slugs um.
  * Läuft als plugin_first — vor createGetCatPageFromModRewrite().
  *
- * Änderungen gegenüber v1.3.1:
- *  - neu: isHtaccessValid() prüft jetzt zusätzlich die Sitemap-Regel
- *         (RewriteRule ^sitemap\.xml$ index.php [L,QSA])
- *  - neu: checkHtaccess() zeigt spezifische Fehlermeldungen je nach
- *         fehlendem Eintrag (Sitemap-Regel, Catch-All-Regeln oder beides)
- *  - refactor: parseHtaccessRules() extrahiert – Regex-Muster an einer
- *              einzigen Stelle definiert, keine Redundanz mehr
- *  - refactor: $htaccessValid Cache entfernt – verhindert Probleme bei
- *              PHP-FPM/OPcache wo statische Properties zwischen Requests
- *              im selben Worker erhalten bleiben können
- *  - fix: parseHtaccessRules() erkennt jetzt auskommentierte Regeln korrekt
- *         als inaktiv (# RewriteRule ... wird nicht mehr als aktiv gewertet)
+ * Änderungen gegenüber v1.3.2:
+ *  - fix: slugify() – mb_strtolower() wird jetzt VOR str_replace() aufgerufen.
+ *         Großakzente wie É, À wurden zuvor nicht transliteriert ("CAFÉ" → "caf").
+ *         Großbuchstaben-Keys Ä/Ö/Ü aus der Map entfernt (nach lowercase redundant).
+ *  - fix: unserialize() in applyMetaKeywordsDescription() mit
+ *         ['allowed_classes' => false] gehärtet (Object-Injection-Schutz).
+ *  - fix: rewriteOutput()-Lookahead um //, javascript:, data: erweitert –
+ *         macht die Ausschluss-Absicht explizit statt implizit.
+ *  - fix: PLUGIN_DIR-Fallback mit rtrim()+Trailing-Slash abgesichert –
+ *         zukunftssicher für moziloCMS-Versionen die PLUGIN_DIR definieren.
  */
 
 class _seo_urls extends Plugin {
@@ -51,7 +49,7 @@ class _seo_urls extends Plugin {
      */
     private static $redirector = null;
 
-    const VERSION = 'v1.3.2';
+    const VERSION = 'v1.3.3';
 
     const SYSTEM_PATHS = array(
         'admin',
@@ -259,7 +257,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
      * passiert nichts — die globalen CMS-Einstellungen bleiben unverändert.
      */
     private static function applyMetaKeywordsDescription() {
-        $pluginDir = defined('PLUGIN_DIR') ? PLUGIN_DIR : (defined('BASE_DIR') ? BASE_DIR . 'plugins/' : '');
+        $pluginDir = defined('PLUGIN_DIR') ? rtrim(PLUGIN_DIR, '/') . '/' : (defined('BASE_DIR') ? BASE_DIR . 'plugins/' : '');
         if ($pluginDir === '') {
             return;
         }
@@ -277,7 +275,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
         }
         $raw = substr($raw, $pos);
 
-        $conf = @unserialize($raw);
+        $conf = @unserialize($raw, ['allowed_classes' => false]);
         if (!is_array($conf)) {
             return;
         }
@@ -704,7 +702,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
      */
     public static function rewriteOutput($html) {
         $html = preg_replace_callback(
-            '/(href|action)=(["\'])(?!https?:\/\/|mailto:|tel:)([^"\'#?]+(?:\.html|\/))(\\?[^"\'#]*)?(\#[^"\']*)?\2/i',
+            '/(href|action)=(["\'])(?!https?:\/\/|\/\/|mailto:|tel:|javascript:|data:)([^"\'#?]+(?:\.html|\/))(\\?[^"\'#]*)?(\#[^"\']*)?\2/i',
             array('_seo_urls', 'rewriteCallback'),
             $html
         );
@@ -817,13 +815,14 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
     public static function slugify($text) {
         static $map = array(
+            // Deutsche Umlaute und ß.
+            // Großvarianten (Ä, Ö, Ü) nicht nötig – mb_strtolower() läuft zuerst.
+            // ß ist von mb_strtolower() unberührt und wird korrekt zu 'ss'.
             'ä' => 'ae',
             'ö' => 'oe',
             'ü' => 'ue',
             'ß' => 'ss',
-            'Ä' => 'ae',
-            'Ö' => 'oe',
-            'Ü' => 'ue',
+            // Romanische Akzente (Kleinbuchstaben – Großvarianten nach lowercase abgedeckt)
             'é' => 'e',
             'è' => 'e',
             'ê' => 'e',
@@ -846,8 +845,10 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             'ç' => 'c',
         );
 
-        $text = str_replace(array_keys($map), array_values($map), $text);
+        // Erst lowercase, dann transliterieren: Großakzente (É, À, …) werden
+        // durch mb_strtolower() zu é, à, … und sind dann in der Map enthalten.
         $text = mb_strtolower($text, 'UTF-8');
+        $text = str_replace(array_keys($map), array_values($map), $text);
         $text = preg_replace('/[^a-z0-9]+/', '-', $text);
         $text = trim($text, '-');
 

@@ -50,6 +50,25 @@ class SeoUrlsTest extends TestCase {
         $this->assertSame('gruesse',         _seo_urls::slugify('Grüße'));
     }
 
+    /**
+     * Großakzente müssen korrekt transliteriert werden (Bug in v1.3.2 und früher:
+     * mb_strtolower() lief nach str_replace(), Großakzente wie É, À wurden
+     * von der Map nicht erfasst und von preg_replace() weggeworfen).
+     */
+    public function testSlugifyGrossAkzente(): void {
+        $this->assertSame('cafe',        _seo_urls::slugify('CAFÉ'));
+        $this->assertSame('a-la-carte',  _seo_urls::slugify('À LA CARTE'));
+        $this->assertSame('eclair',      _seo_urls::slugify('ÉCLAIR'));
+        $this->assertSame('resume',      _seo_urls::slugify('RÉSUMÉ'));
+    }
+
+    public function testSlugifyGrossUmlaute(): void {
+        $this->assertSame('ueber-uns',   _seo_urls::slugify('ÜBER UNS'));
+        $this->assertSame('oeffentlich', _seo_urls::slugify('ÖFFENTLICH'));
+        $this->assertSame('uebung',      _seo_urls::slugify('ÜBUNG'));
+        $this->assertSame('strasse',     _seo_urls::slugify('STRASSE'));
+    }
+
     public function testSlugifyLeerzeichen(): void {
         $this->assertSame('unser-team',  _seo_urls::slugify('Unser Team'));
         $this->assertSame('foo-bar-baz', _seo_urls::slugify('foo   bar   baz'));
@@ -782,6 +801,40 @@ class SeoUrlsTest extends TestCase {
     public function testIsHtaccessValidMitFehlendenRegeln(): void {
         $rules = self::callStatic('parseHtaccessRules', 'RewriteEngine On');
         $this->assertFalse($rules['hasSitemap'] && $rules['hasCatchAll']);
+    }
+
+    // -----------------------------------------------------------------------
+    // rewriteOutput() – Lookahead-Ausschlüsse
+    // -----------------------------------------------------------------------
+
+    /**
+     * Protokoll-relative URLs (//cdn.example.com/…) dürfen nicht angefasst werden.
+     */
+    public function testRewriteOutputIgnoriertProtokollRelativeUrls(): void {
+        self::injectCatMap(['ueber-uns' => '%C3%9Cber%20Uns'], ['Über Uns' => 'ueber-uns']);
+        $html   = '<a href="//cdn.example.com/bild/">Bild</a>';
+        $result = _seo_urls::rewriteOutput($html);
+        $this->assertSame($html, $result, 'Protokoll-relative URLs dürfen nicht umgeschrieben werden');
+    }
+
+    /**
+     * javascript:-Links dürfen nicht angefasst werden.
+     */
+    public function testRewriteOutputIgnoriertJavascriptLinks(): void {
+        self::injectCatMap(['ueber-uns' => '%C3%9Cber%20Uns'], ['Über Uns' => 'ueber-uns']);
+        $html   = '<a href="javascript:void(0)/">Klick</a>';
+        $result = _seo_urls::rewriteOutput($html);
+        $this->assertSame($html, $result, 'javascript:-Links dürfen nicht umgeschrieben werden');
+    }
+
+    /**
+     * data:-URIs in action-Attributen dürfen nicht angefasst werden.
+     */
+    public function testRewriteOutputIgnoriertDataUris(): void {
+        self::injectCatMap(['ueber-uns' => '%C3%9Cber%20Uns'], ['Über Uns' => 'ueber-uns']);
+        $html   = '<form action="data:text/plain,foo/">';
+        $result = _seo_urls::rewriteOutput($html);
+        $this->assertSame($html, $result, 'data:-URIs dürfen nicht umgeschrieben werden');
     }
 
 
