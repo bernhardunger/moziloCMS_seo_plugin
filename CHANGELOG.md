@@ -4,6 +4,43 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
 
 ---
 
+## [v1.3.3] – 2026-05-29
+
+### Behoben
+
+- **`slugify()` – Großakzente wurden nicht transliteriert (echter Bug)**
+  `mb_strtolower()` wurde bisher *nach* `str_replace()` aufgerufen. Da die Map
+  nur Kleinbuchstaben-Akzente enthielt (é, à, …), überlebten Großakzente wie
+  É, À die Transliteration und wurden anschließend von `preg_replace()` ersatzlos
+  weggeworfen. Beispiel: `"CAFÉ"` → `"caf"` statt `"cafe"`.
+  Fix: `mb_strtolower()` läuft jetzt *vor* `str_replace()`. Die redundanten
+  Großbuchstaben-Keys `Ä`, `Ö`, `Ü` wurden aus der Map entfernt.
+
+- **`unserialize()` gehärtet**
+  `applyMetaKeywordsDescription()` rief `@unserialize($raw)` ohne Options-Array
+  auf. Nun: `@unserialize($raw, ['allowed_classes' => false])` – schließt
+  PHP Object-Injection aus (Low Risk, da lokale Datei, aber kostenlose Härtung).
+
+- **`rewriteOutput()` Lookahead explizit erweitert**
+  Protokoll-relative URLs (`//cdn…`), `javascript:`- und `data:`-URIs wurden
+  bisher nur indirekt durch `buildSlugUrl()` ignoriert (das `null` zurückgibt).
+  Der Regex-Lookahead wurde um `\/\/`, `javascript:` und `data:` ergänzt –
+  macht die Ausschluss-Absicht explizit statt implizit.
+
+- **`PLUGIN_DIR`-Fallback Trailing-Slash abgesichert**
+  Falls `PLUGIN_DIR` in einer künftigen moziloCMS-Version ohne Trailing-Slash
+  definiert wird, war die Pfadkonkatenation fehlerhaft. Jetzt: `rtrim(PLUGIN_DIR, '/') . '/'`.
+  In moziloCMS 3.0.x irrelevant (greift den `BASE_DIR`-Zweig), aber zukunftssicher.
+
+### Tests
+- 5 neue Tests: `testSlugifyGrossAkzente()`, `testSlugifyGrossUmlaute()`,
+  `testRewriteOutputIgnoriertProtokollRelativeUrls()`,
+  `testRewriteOutputIgnoriertJavascriptLinks()`,
+  `testRewriteOutputIgnoriertDataUris()`
+- Gesamtzahl: 62 Tests
+
+---
+
 ## [v1.3.2] – 2026-05-29
 
 ### Neu
