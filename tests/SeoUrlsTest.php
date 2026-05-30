@@ -839,6 +839,64 @@ class SeoUrlsTest extends TestCase {
 
 
     // -----------------------------------------------------------------------
+    // splitPath()
+    // -----------------------------------------------------------------------
+
+    public function testSplitPathKatUndSeite(): void {
+        $result = self::callStatic('splitPath', '/ueber-uns/team/');
+        $this->assertSame(['ueber-uns', 'team'], $result);
+    }
+
+    public function testSplitPathNurKategorie(): void {
+        $result = self::callStatic('splitPath', '/ueber-uns/');
+        $this->assertSame(['ueber-uns', null], $result);
+    }
+
+    public function testSplitPathMitHtmlSuffix(): void {
+        $result = self::callStatic('splitPath', '/ueber-uns/team.html');
+        $this->assertSame(['ueber-uns', 'team'], $result);
+    }
+
+    /**
+     * URL_BASE-Stripping ist im Test-Harness nicht prüfbar:
+     * URL_BASE ist als PHP-Konstante '/' definiert (define() im Bootstrap)
+     * und kann in PHP nicht neu gesetzt werden – der Branch
+     * `URL_BASE !== '/'` ist im Test-Kontext nie aktiv.
+     */
+    public function testSplitPathUrlBaseWirdAbgeschnitten(): void {
+        $this->markTestSkipped(
+            'URL_BASE ist im Test-Harness als Konstante \'/\' definiert ' .
+            'und kann in PHP nicht neu gesetzt werden.'
+        );
+    }
+
+    public function testSplitPathLeererPfad(): void {
+        $result = self::callStatic('splitPath', '/');
+        $this->assertSame([null, null], $result);
+    }
+
+    public function testSplitPathKodiertZeichenWerdenNichtDekodiert(): void {
+        $result = self::callStatic('splitPath', '/ueber-uns/unser%20team/');
+        $this->assertSame(['ueber-uns', 'unser%20team'], $result);
+    }
+
+    // -----------------------------------------------------------------------
+    // dumpDebugMap() – Regressionsschutz
+    // -----------------------------------------------------------------------
+
+    /**
+     * dumpDebugMap() enthält echo + exit und ist nicht direkt unit-testbar.
+     * Regressionsschutz: getPluginContent() mit einem Nicht-'plugin_first'-Wert
+     * gibt '' zurück – der seo_debug-Zweig wird nie erreicht,
+     * kein exit() bricht den Test-Runner ab.
+     */
+    public function testGetPluginContentGibtLeerZurueckFuerNichtPluginFirst(): void {
+        $plugin = new _seo_urls();
+        $this->assertSame('', $plugin->getPluginContent(''));
+        $this->assertSame('', $plugin->getPluginContent('other_value'));
+    }
+
+    // -----------------------------------------------------------------------
     // Reflection- und Injektions-Hilfsmethoden
     // -----------------------------------------------------------------------
 

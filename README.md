@@ -130,7 +130,7 @@ Den Debug-Modus in der Plugin-Konfiguration nur im Testbetrieb aktivieren und vo
 Nach der Aktivierung im Admin-Bereich unter **Plugins → seo_urls** den Info-Tab prüfen:
 
 - ✅ **Grün**: `.htaccess` korrekt konfiguriert – Plugin läuft
-- ❌ **Rot**: Catch-All-Regeln fehlen oder sind unvollständig – Plugin hat sich automatisch deaktiviert, `.htaccess` korrigieren und Seite neu laden
+- ❌ **Rot**: Sitemap-Regel oder Catch-All-Regeln fehlen/unvollständig – SEO-URLs inaktiv. Das Plugin bleibt aktiviert und nimmt den Betrieb automatisch wieder auf, sobald die `.htaccess` korrekt konfiguriert ist
 
 ---
 
