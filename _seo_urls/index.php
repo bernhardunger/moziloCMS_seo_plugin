@@ -722,6 +722,8 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     }
 
     private static function rewritePath($path) {
+        // rewritePath() dekodiert vor dem Split – Aufrufer-Kontext ist bereits HTML-Output
+        [$catPart, $pagePart] = self::splitPath(urldecode($path));
         [$catPart, $pagePart] = self::splitPath(urldecode($path));
 
         if ($catPart === null) {
