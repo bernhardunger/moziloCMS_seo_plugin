@@ -4,6 +4,62 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
 
 ---
 
+## [v1.3.4] – 2026-05-30
+
+### Refactoring
+
+- **`splitPath(string $uri): array` eingeführt**
+  Dasselbe Muster — URL_BASE abschneiden → `.html` entfernen → `rtrim('/')` →
+  `explode`/`array_filter` zu `$parts` — stand dreifach nahezu identisch im Code:
+  in `handleRequest()`, im `rewriteSitemap()`-Callback und in `rewritePath()`.
+  Der neue private Helfer kapselt genau diese Logik und gibt `[?catPart, ?pagePart]`
+  zurück (`null` wenn der Pfad leer ist).
+  Bewusst minimal gehalten: kein `urldecode` (Aufrufer entscheiden selbst),
+  kein SYSTEM_PATHS-Check, kein Sitemap-Check.
+
+- **`dumpDebugMap()` aus `getPluginContent()` herausgezogen**
+  Der `seo_debug`-Block (Präsentationslogik) war direkt in der Lifecycle-Methode.
+  Jetzt: `private static function dumpDebugMap(): void` — `getPluginContent()`
+  ruft nur noch `self::dumpDebugMap()` auf.
+
+### UX & Dokumentation
+
+- **`checkHtaccess()`: Statusmeldung präzisiert**
+  `"PLUGIN DEAKTIVIERT"` ersetzt durch `"SEO-URLs inaktiv"`. Neuer Hinweis:
+  Das Plugin bleibt aktiviert und nimmt den Betrieb automatisch wieder auf,
+  sobald die `.htaccess` korrekt konfiguriert ist — kein erneutes Aktivieren
+  im Admin nötig.
+
+- **`getInfo()`: Fußnote zur Versionsangabe `"2.0 / 3.0"`**
+  Erklärt im Admin-Info-Tab, warum der Versionsstring die Ziffer `"2"` enthalten
+  muss: `admin/plugins.php` prüft via `strpos()` auf `"2"` — fehlt sie, deaktiviert
+  moziloCMS das Plugin automatisch. Das Plugin unterstützt ausschließlich
+  moziloCMS 3.0.x.
+
+- **`getInfo()`: Installationshinweis aktualisiert**
+  Bullet über unvollständige `.htaccess` spricht jetzt von "SEO-URLs inaktiv" und
+  Auto-Reaktivierung statt "deaktiviert sich das Plugin automatisch".
+
+- **README.md**: ❌-Bullet an neue Terminologie angepasst.
+
+### Bereinigung
+
+- **Datei-Header verschlankt**: Nur noch `@version`, `@license`, einzeiliger
+  Beschreibungstext und Verweis auf `CHANGELOG.md`. Kein inline-Changelog mehr.
+
+### Tests
+- 7 neue Tests für `splitPath()` und `dumpDebugMap()`:
+  `testSplitPathKatUndSeite`, `testSplitPathNurKategorie`,
+  `testSplitPathMitHtmlSuffix`, `testSplitPathLeererPfad`,
+  `testSplitPathKodiertZeichenWerdenNichtDekodiert`,
+  `testGetPluginContentGibtLeerZurueckFuerNichtPluginFirst`
+  + 1 skipped: `testSplitPathUrlBaseWirdAbgeschnitten`
+  (`URL_BASE` ist im Test-Harness als Konstante `'/'` definiert und kann nicht
+  neu gesetzt werden – der Branch `URL_BASE !== '/'` ist im Test-Kontext nie aktiv)
+- alle Tests grün
+
+---
+
 ## [v1.3.3] – 2026-05-29
 
 ### Behoben
@@ -37,7 +93,7 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
   `testRewriteOutputIgnoriertProtokollRelativeUrls()`,
   `testRewriteOutputIgnoriertJavascriptLinks()`,
   `testRewriteOutputIgnoriertDataUris()`
-- Gesamtzahl: 71 Tests
+- alle Tests grün
 
 ---
 
@@ -71,7 +127,7 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
   Redundanz mehr). Rückgabe: `['hasSitemap' => bool, 'hasCatchAll' => bool]`.
 
 ### Tests
-- 66 Tests, alle grün
+- alle Tests grün
 
 ---
 
@@ -99,8 +155,7 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
   automatisch (Bug in `admin/plugins.php` – keine Prüfung auf `'3'`).
 
 ### Tests
-- 58 Tests, alle grün
-- Keine neuen Tests (getInfo() und checkHtaccess() sind Admin-Methoden)
+- Keine neuen Tests (getInfo() und checkHtaccess() sind Admin-Methoden), alle Tests grün
 
 ---
 
@@ -134,7 +189,7 @@ Plugins bei jedem Request.
 - `get_FirstPageOfCat()` ohne vorherige `exists_CatPage()`-Prüfung – robuster und direkt.
 
 ### Tests
-- Bestehende 57 Tests weiterhin grün
+- alle Tests weiterhin grün
 - Manuell getestet mit moziloCMS 3.0.x und MetaKeywordsDescription Plugin
 
 ---
@@ -157,7 +212,7 @@ Plugins bei jedem Request.
 ### Tests
 - 2 neue Tests: `testHandleRequestGetMoziloCmsQueryParamsWerdenIgnoriert()`
   und `testHandleRequestGetSlugOhneMoziloCmsQueryParamsWirdVerarbeitet()`
-- 58 Tests, alle grün
+- alle Tests grün
 
 ---
 
@@ -179,9 +234,9 @@ Plugins bei jedem Request.
 
 ### Tests
 - PHPUnit 12 als dev-dependency eingerichtet (nur lokal, nie deployed)
-- 56 Tests, 80 Assertions – vollständige Abdeckung aller Hilfsmethoden:
-  `slugify()`, `isSlug()`, `stripHtmlSuffix()`, `makeUnique()`, `getSafeOrigin()`,
-  `buildSlugUrl()`, `rewriteOutput()` (Links, Sitemap, Canonical),
+- Vollständige Abdeckung aller Hilfsmethoden: `slugify()`, `isSlug()`,
+  `stripHtmlSuffix()`, `makeUnique()`, `getSafeOrigin()`, `buildSlugUrl()`,
+  `rewriteOutput()` (Links, Sitemap, Canonical),
   `handleRequest()` (GET, GET-Redirect 301, POST, Draft-Modus)
 
 ---

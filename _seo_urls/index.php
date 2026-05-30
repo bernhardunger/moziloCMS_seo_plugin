@@ -3,23 +3,11 @@ if (!defined('IS_CMS')) die();
 
 /**
  * Plugin:   seo_urls
- * @author:  B.Unger
- * @version: v1.3.3  (siehe Klassenkonstante VERSION)
+ * @version: v1.3.4  (siehe Klassenkonstante VERSION)
  * @license: GPL
  *
  * Wandelt Kategorie- und Seitennamen in SEO-freundliche URL-Slugs um.
- * Läuft als plugin_first — vor createGetCatPageFromModRewrite().
- *
- * Änderungen gegenüber v1.3.2:
- *  - fix: slugify() – mb_strtolower() wird jetzt VOR str_replace() aufgerufen.
- *         Großakzente wie É, À wurden zuvor nicht transliteriert ("CAFÉ" → "caf").
- *         Großbuchstaben-Keys Ä/Ö/Ü aus der Map entfernt (nach lowercase redundant).
- *  - fix: unserialize() in applyMetaKeywordsDescription() mit
- *         ['allowed_classes' => false] gehärtet (Object-Injection-Schutz).
- *  - fix: rewriteOutput()-Lookahead um //, javascript:, data: erweitert –
- *         macht die Ausschluss-Absicht explizit statt implizit.
- *  - fix: PLUGIN_DIR-Fallback mit rtrim()+Trailing-Slash abgesichert –
- *         zukunftssicher für moziloCMS-Versionen die PLUGIN_DIR definieren.
+ * Änderungshistorie: siehe CHANGELOG.md
  */
 
 class _seo_urls extends Plugin {
@@ -49,7 +37,7 @@ class _seo_urls extends Plugin {
      */
     private static $redirector = null;
 
-    const VERSION = 'v1.3.3';
+    const VERSION = 'v1.3.4';
 
     const SYSTEM_PATHS = array(
         'admin',
@@ -89,17 +77,7 @@ class _seo_urls extends Plugin {
             self::buildMaps();
 
             if (!empty($_GET['seo_debug']) && $this->settings->get('debug_enabled') === 'true') {
-                header('Content-Type: text/plain; charset=utf-8');
-                echo "=== seo_urls Plugin " . self::VERSION . " – Slug-Map ===\n\n";
-                foreach (self::$catBySlug as $catSlug => $catRaw) {
-                    $catDecoded = urldecode($catRaw);
-                    echo "  [{$catDecoded}] → /{$catSlug}/\n";
-                    $pages = isset(self::$pageBySlug[$catSlug]) ? self::$pageBySlug[$catSlug] : array();
-                    foreach ($pages as $pageSlug => $pageRaw) {
-                        echo "       [" . urldecode($pageRaw) . "] → /{$catSlug}/{$pageSlug}/\n";
-                    }
-                }
-                exit;
+                self::dumpDebugMap();
             }
 
             self::handleRequest();
@@ -113,6 +91,20 @@ class _seo_urls extends Plugin {
         }
 
         return '';
+    }
+
+    private static function dumpDebugMap(): void {
+        header('Content-Type: text/plain; charset=utf-8');
+        echo "=== seo_urls Plugin " . self::VERSION . " – Slug-Map ===\n\n";
+        foreach (self::$catBySlug as $catSlug => $catRaw) {
+            $catDecoded = urldecode($catRaw);
+            echo "  [{$catDecoded}] → /{$catSlug}/\n";
+            $pages = isset(self::$pageBySlug[$catSlug]) ? self::$pageBySlug[$catSlug] : array();
+            foreach ($pages as $pageSlug => $pageRaw) {
+                echo "       [" . urldecode($pageRaw) . "] → /{$catSlug}/{$pageSlug}/\n";
+            }
+        }
+        exit;
     }
 
     function getConfig() {
@@ -139,7 +131,10 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
 <h4 style="color:#000;font-weight:bold;">Voraussetzungen</h4>
 <table>
-  <tr><td><b>moziloCMS</b></td><td>3.0.x oder höher (moziloCMS 2.x wird nicht unterstützt)</td></tr>
+  <tr><td><b>moziloCMS</b></td><td>3.0.x oder höher (moziloCMS 2.x wird nicht unterstützt)<br>
+    <small style="color:#666;">Hinweis zur Versionsangabe &ldquo;2.0&nbsp;/&nbsp;3.0&rdquo;: moziloCMS pr&uuml;ft intern,
+    ob der Versionsstring die Ziffer &ldquo;2&rdquo; enth&auml;lt (<code>strpos()</code> in <code>admin/plugins.php</code>).
+    Fehlt sie, deaktiviert moziloCMS das Plugin im Admin automatisch.</small></td></tr>
   <tr><td><b>PHP</b></td><td>8.1 oder höher</td></tr>
   <tr><td><b>.htaccess</b></td><td>Sitemap-Regel und Catch-All-Regeln erforderlich – siehe htaccess_snippet.txt</td></tr>
 </table>
@@ -148,7 +143,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 <ul>
   <li>Das Plugin wird im Admin-Bereich unter <b>Plugins</b> aktiviert &ndash; kein weiterer Aufruf in der <code>template.html</code> oder in einer Inhaltsseite notwendig.</li>
   <li>Die <code>.htaccess</code> muss manuell um die Sitemap-Regel und die Catch-All-Regeln aus <code>htaccess_snippet.txt</code> erg&auml;nzt werden &ndash; ohne diese Regeln werden Slug-URLs mit &ldquo;Not Found&rdquo; beantwortet.<br /><b>Wichtig:</b> Die Regeln immer vollst&auml;ndig eintragen oder vollst&auml;ndig entfernen &ndash; eine teilweise Konfiguration kann den Admin-Bereich unzug&auml;nglich machen.</li>
-  <li>Sind die erforderlichen Regeln unvollst&auml;ndig, fehlerhaft oder auskommentiert, deaktiviert sich das Plugin automatisch um den Admin-Bereich zu sch&uuml;tzen.</li>
+  <li>Sind die erforderlichen Regeln unvollst&auml;ndig, fehlerhaft oder auskommentiert, setzt das Plugin den URL-Rewrite aus (SEO-URLs inaktiv) und nimmt den Betrieb automatisch wieder auf, sobald die <code>.htaccess</code> korrekt konfiguriert ist &ndash; kein erneutes Aktivieren im Admin n&ouml;tig.</li>
   <li>HTTPS- und WWW-Weiterleitung m&uuml;ssen ebenfalls in der <code>.htaccess</code> eingetragen werden (Domain anpassen).</li>
 </ul>
 
@@ -170,6 +165,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
   <tr><td><code>/Über Uns/Unser Team/</code></td><td><code>/ueber-uns/unser-team/</code></td></tr>
   <tr><td><code>/Häufige Fragen/</code></td><td><code>/haeufige-fragen/</code></td></tr>
 </table>
+
 ';
 
         $info = array(
@@ -465,11 +461,14 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
         if (!$rules['hasSitemap'] || !$rules['hasCatchAll']) {
             return '<p style="color:red;font-weight:bold;">'
-                . '&#9888; PLUGIN DEAKTIVIERT: Die .htaccess-Konfiguration ist unvollst&auml;ndig. '
-                . 'Bitte alle erforderlichen Regeln vollst&auml;ndig eintragen '
-                . 'oder vollst&auml;ndig entfernen &ndash; eine teilweise Konfiguration kann den '
-                . 'Admin-Bereich unzug&auml;nglich machen. '
-                . 'Seite nach Korrektur neu laden.'
+                . '&#9888; SEO-URLs inaktiv: Die .htaccess-Konfiguration ist unvollst&auml;ndig.'
+                . '</p>'
+                . '<p>'
+                . 'Das Plugin bleibt aktiviert und nimmt den Betrieb automatisch wieder auf, '
+                . 'sobald alle erforderlichen Regeln korrekt eingetragen sind &ndash; '
+                . 'kein erneutes Aktivieren im Admin n&ouml;tig. '
+                . 'Regeln bitte vollst&auml;ndig eintragen oder vollst&auml;ndig entfernen &ndash; '
+                . 'eine teilweise Konfiguration kann den Admin-Bereich unzug&auml;nglich machen.'
                 . '</p>'
                 . '<p><b>Erforderliche Eintr&auml;ge in der .htaccess:</b></p>'
                 . '<pre style="background:#f4f4f4;padding:8px;font-size:12px;">'
@@ -501,41 +500,25 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             return;
         }
 
-        if (defined('URL_BASE') && URL_BASE !== '/' && strpos($uri, URL_BASE) === 0) {
-            $uri = '/' . substr($uri, strlen(URL_BASE));
-        }
-
         $hadHtmlSuffix = (bool) preg_match('/\.html$/i', $uri);
 
-        $uri = self::stripHtmlSuffix($uri);
-        $uri = rtrim($uri, '/');
+        [$catPart, $pagePart] = self::splitPath($uri);
 
-        if ($uri === '' || $uri === '/') {
+        if ($catPart === null) {
             return;
         }
 
-        $parts = array_values(array_filter(
-            explode('/', $uri),
-            function ($s) {
-                return $s !== '';
-            }
-        ));
-
-        if (count($parts) === 0) {
-            return;
-        }
-
-        if (strtolower($parts[0]) === 'sitemap.xml') {
+        if (strtolower($catPart) === 'sitemap.xml') {
             self::rewriteSitemap();
             return;
         }
 
-        if (in_array(strtolower($parts[0]), self::SYSTEM_PATHS, true)) {
+        if (in_array(strtolower($catPart), self::SYSTEM_PATHS, true)) {
             return;
         }
 
-        $rawCat  = urldecode($parts[0]);
-        $rawPage = isset($parts[1]) ? urldecode($parts[1]) : null;
+        $rawCat  = urldecode($catPart);
+        $rawPage = $pagePart !== null ? urldecode($pagePart) : null;
 
         if (self::isSlug($rawCat) && isset(self::$catBySlug[$rawCat])) {
             self::resolveSlugRequest($rawCat, $rawPage, $hadHtmlSuffix);
@@ -652,29 +635,14 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             function ($m) use ($currentOrigin) {
                 $path = $m[2];
 
-                $relative = $path;
-                if (defined('URL_BASE') && URL_BASE !== '/') {
-                    $base = rtrim(URL_BASE, '/');
-                    if (strpos($relative, $base) === 0) {
-                        $relative = substr($relative, strlen($base));
-                    }
-                }
+                [$catPart, $pagePart] = self::splitPath($path);
 
-                $relative = self::stripHtmlSuffix($relative);
-                $relative = rtrim(urldecode($relative), '/');
-                $parts    = array_values(array_filter(
-                    explode('/', $relative),
-                    function ($s) {
-                        return $s !== '';
-                    }
-                ));
-
-                if (count($parts) === 0) {
+                if ($catPart === null) {
                     return $m[0];
                 }
 
-                $catName  = $parts[0];
-                $pageName = isset($parts[1]) ? $parts[1] : null;
+                $catName  = urldecode($catPart);
+                $pageName = $pagePart !== null ? urldecode($pagePart) : null;
 
                 $slugUrl = self::buildSlugUrl($catName, $pageName);
 
@@ -754,37 +722,19 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     }
 
     private static function rewritePath($path) {
-        $clean = urldecode($path);
+        // rewritePath() dekodiert vor dem Split – Aufrufer-Kontext ist bereits HTML-Output
+        [$catPart, $pagePart] = self::splitPath(urldecode($path));
+        [$catPart, $pagePart] = self::splitPath(urldecode($path));
 
-        if (defined('URL_BASE') && URL_BASE !== '/') {
-            $base = rtrim(URL_BASE, '/');
-            if (strpos($clean, $base) === 0) {
-                $clean = substr($clean, strlen($base));
-            }
-        }
-
-        $clean = self::stripHtmlSuffix($clean);
-        $clean = rtrim($clean, '/');
-
-        $parts = array_values(array_filter(
-            explode('/', $clean),
-            function ($s) {
-                return $s !== '';
-            }
-        ));
-
-        if (count($parts) === 0) {
+        if ($catPart === null) {
             return null;
         }
 
-        $catName  = $parts[0];
-        $pageName = isset($parts[1]) ? $parts[1] : null;
-
-        if (self::isSlug($catName)) {
+        if (self::isSlug($catPart)) {
             return null;
         }
 
-        return self::buildSlugUrl($catName, $pageName);
+        return self::buildSlugUrl($catPart, $pagePart);
     }
 
     // -----------------------------------------------------------------------
@@ -858,6 +808,21 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     // -----------------------------------------------------------------------
     // Hilfsmethoden
     // -----------------------------------------------------------------------
+
+    /**
+     * Zerlegt einen rohen URI-Pfad in [catPart, pagePart].
+     * Schneidet URL_BASE ab, entfernt .html, dekodiert NICHT
+     * (Dekodierung entscheidet der Aufrufer).
+     * @return array{0: ?string, 1: ?string}  catPart=null wenn leer
+     */
+    private static function splitPath(string $uri): array {
+        if (defined('URL_BASE') && URL_BASE !== '/' && strpos($uri, URL_BASE) === 0) {
+            $uri = '/' . substr($uri, strlen(URL_BASE));
+        }
+        $uri   = rtrim(self::stripHtmlSuffix($uri), '/');
+        $parts = array_values(array_filter(explode('/', $uri), fn($s) => $s !== ''));
+        return [$parts[0] ?? null, $parts[1] ?? null];
+    }
 
     /**
      * Entfernt die .html-Endung aus einem Pfad (case-insensitive).
