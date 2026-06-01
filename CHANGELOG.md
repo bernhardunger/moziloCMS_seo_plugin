@@ -4,6 +4,77 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
 
 ---
 
+## [v1.3.5] – 2026-06-01
+
+### Behoben
+
+- **F5: DocBlock `isHtaccessValid()` korrigiert**
+  Die frühere Begründung für das Nicht-Cachen ("statische Properties bleiben unter
+  PHP-FPM/OPcache zwischen Requests erhalten") war sachlich falsch: PHP verwirft den
+  gesamten Klassenzustand am Requestende, auch unter FPM. Korrekter Kommentar:
+  `isHtaccessValid()` liest die `.htaccess` bei jedem Request neu, damit eine
+  Korrektur sofort wirkt. Kein funktionaler Code geändert.
+
+- **F6: `rewriteOutput()` – Rückgabetyp und Null-Absicherung**
+  Signatur von `rewriteOutput($html)` auf `rewriteOutput(string $html): string`
+  erweitert. `preg_replace_callback()` kann `null` zurückgeben (Regex-Fehler);
+  das würde `rewriteCanonical(string $html)` mit einem `TypeError` abbrechen.
+  Fix: `return self::rewriteCanonical($html ?? '');`
+
+- **F8: `@unserialize` durch `try-catch(\Throwable)` ersetzt**
+  `@`-Operator in `applyMetaKeywordsDescription()` entfernt; `unserialize()` in
+  `try-catch(\Throwable)` eingewickelt. `allowed_classes => false` bleibt.
+  Hinweis: `unserialize()` emittiert E_WARNING auf korruptem Input (kein Exception);
+  der Catch schützt vor zukünftigen PHP-Exceptions. E_WARNING erscheint weiterhin
+  im PHP-Error-Log (gewünscht für Debugging auf Shared Hosting).
+
+### Verbessert
+
+- **F9: Request-weites Caching für `isHtaccessValid()`**
+  Neue Property `private static ?bool $htaccessValidCache = null;` speichert das
+  Prüfergebnis für die Dauer des Requests. Hintergrund: moziloCMS ruft Plugin-Methoden
+  mehrfach pro Seitenaufruf auf – ohne Cache würde die `.htaccess` bei jedem Aufruf
+  neu gelesen. Der Cache lebt nur für einen Request: PHP verwirft static Properties
+  am Requestende (klassische SAPIs: mod_php, CGI, FPM). Änderungen per FTP wirken
+  damit sofort beim nächsten Seitenaufruf, nicht erst nach Server-Neustart.
+
+### Refactoring
+
+- **F7: Array-Syntax modernisiert (PHP 8.1)**
+  Alle 15 `array()`-Literale auf Kurzschreibweise `[]` umgestellt. Die vier
+  statischen Slug-Map-Properties erhalten explizite `array`-Typ-Deklaration:
+  `private static array $catBySlug = []` etc. Rein syntaktisch, kein funktionaler
+  Unterschied.
+
+- **F2: `slugify()` – iconv-Transliteration statt statischer Zeichenmap**
+  Das 24-Einträge-`static $map` ersetzt durch dreistufige Pipeline:
+  (1) `mb_strtolower()` mit `strtolower()`-Fallback,
+  (2) 4-Einträge `$germanMap` (ä/ö/ü/ß, läuft vor iconv),
+  (3) `iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', …)` für übrige Akzente.
+  Auf Linux/IONOS (Produktion) liefert iconv `é→e` direkt. Auf Windows/Laragon
+  (Entwicklung) gibt libiconv Akzente als Präfix-Zeichen aus (`é→'e`); ein
+  `str_replace(["'","\`","^","~",'"'])` danach entfernt diese Artefakte (No-op
+  auf Linux). Typ-Deklaration: `slugify(string $text): string`.
+
+### Dokumentation
+
+- **F3: EXT_PAGE/EXT_HIDDEN-Asymmetrie in `buildMaps()` erklärt**
+  Inline-Kommentar: `EXT_PAGE` ist in moziloCMS 3.0.x immer definiert (Kernkonstante,
+  Voraussetzung laut `getInfo()`). `EXT_HIDDEN` ist optional – daher der separate
+  `defined()`-Check. Kein Code geändert.
+
+### Tests
+
+- 7 neue Tests: `testSlugifyIconv()`, `testApplyMetaKeywordsDescriptionKorrupteKonfiguration()`,
+  `testApplyMetaKeywordsDescriptionValideKonfiguration()`,
+  `testIsHtaccessValidCacheBefuelltNachErstemAufruf()`,
+  `testIsHtaccessValidCacheWirdDurchResetZurueckgesetzt()`,
+  `testIsHtaccessValidLiestDateiNurEinmalProRequest()`
+- `resetStaticState()` um `htaccessValidCache = null` ergänzt
+- 81 Tests grün, 1 skipped (unverändert)
+
+---
+
 ## [v1.3.4] – 2026-05-30
 
 ### Refactoring

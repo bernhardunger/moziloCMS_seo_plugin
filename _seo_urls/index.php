@@ -23,6 +23,14 @@ class _seo_urls extends Plugin {
     private static $mapsBuilt  = false;
 
     /**
+     * Request-weiter Cache für isHtaccessValid().
+     * Lebt nur für die Dauer eines Requests – PHP verwirft static Properties
+     * am Requestende (klassische SAPIs). Verhindert redundante
+     * file_get_contents()-Aufrufe innerhalb eines Requests.
+     */
+    private static ?bool $htaccessValidCache = null;
+
+    /**
      * URL-kodierter Name der ersten CMS-Kategorie (= Homepage).
      */
     private static $homeCatName = null;
@@ -414,10 +422,11 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
     /**
      * Prüft ob die .htaccess alle erforderlichen Regeln enthält.
-     * Kein Caching – liest die Datei bewusst bei jedem Request neu:
-     * Eine korrigierte .htaccess wirkt damit sofort, ohne Neustart.
-     * (Der $mapsBuilt-Guard in buildMaps() schützt nur gegen Doppelaufbau
-     * innerhalb desselben Requests – ein anderes Anliegen.)
+     * Ergebnis wird request-weit gecacht ($htaccessValidCache): PHP verwirft
+     * static Properties am Requestende (klassische SAPIs), daher wirken
+     * Änderungen per FTP sofort beim nächsten Seitenaufruf. Innerhalb eines
+     * Requests verhindert der Cache redundante file_get_contents()-Aufrufe
+     * (moziloCMS ruft Plugin-Methoden mehrfach auf).
      *
      * Geprüft wird:
      *  1. Sitemap-Regel:    RewriteRule ^sitemap\.xml$ index.php [L,QSA]
@@ -431,19 +440,22 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
      *  - Catch-All fehlt/auskommentiert         → false (Plugin deaktiviert sich)
      */
     private static function isHtaccessValid(): bool {
+        if (self::$htaccessValidCache !== null) {
+            return self::$htaccessValidCache;
+        }
         if (!defined('BASE_DIR')) {
-            return true;
+            return self::$htaccessValidCache = true;
         }
         $htaccess = BASE_DIR . '.htaccess';
         if (!file_exists($htaccess)) {
-            return false;
+            return self::$htaccessValidCache = false;
         }
         $content = file_get_contents($htaccess);
         if ($content === false) {
-            return true;
+            return self::$htaccessValidCache = true;
         }
         $rules = self::parseHtaccessRules($content);
-        return $rules['hasSitemap'] && $rules['hasCatchAll'];
+        return self::$htaccessValidCache = $rules['hasSitemap'] && $rules['hasCatchAll'];
     }
 
     /**
