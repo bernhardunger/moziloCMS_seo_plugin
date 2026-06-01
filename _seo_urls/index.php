@@ -318,11 +318,15 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
         global $template;
 
         if (!empty($setting['description']) && strlen($setting['description']) > 2) {
-            $template = str_replace('{WEBSITE_DESCRIPTION}', $setting['description'], $template);
+            if (isset($template) && is_string($template)) {
+                $template = str_replace('{WEBSITE_DESCRIPTION}', $setting['description'], $template);
+            }
         }
 
         if (!empty($setting['keywords']) && strlen($setting['keywords']) > 2) {
-            $template = str_replace('{WEBSITE_KEYWORDS}', $setting['keywords'], $template);
+            if (isset($template) && is_string($template)) {
+                $template = str_replace('{WEBSITE_KEYWORDS}', $setting['keywords'], $template);
+            }
         }
     }
 
