@@ -410,9 +410,10 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
     /**
      * Prüft ob die .htaccess alle erforderlichen Regeln enthält.
-     * Kein Caching – liest die Datei bei jedem Aufruf neu um Probleme mit
-     * PHP-FPM/OPcache zu vermeiden wo statische Properties zwischen Requests
-     * im selben Worker erhalten bleiben können.
+     * Kein Caching – liest die Datei bewusst bei jedem Request neu:
+     * Eine korrigierte .htaccess wirkt damit sofort, ohne Neustart.
+     * (Der $mapsBuilt-Guard in buildMaps() schützt nur gegen Doppelaufbau
+     * innerhalb desselben Requests – ein anderes Anliegen.)
      *
      * Geprüft wird:
      *  1. Sitemap-Regel:    RewriteRule ^sitemap\.xml$ index.php [L,QSA]
