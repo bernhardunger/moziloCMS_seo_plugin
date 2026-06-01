@@ -16,10 +16,10 @@ class _seo_urls extends Plugin {
     // Slug-Maps
     // -----------------------------------------------------------------------
 
-    private static $catBySlug  = array();  // catSlug  → originalCatName
-    private static $catToSlug  = array();  // originalCatName → catSlug
-    private static $pageBySlug = array();  // catSlug → [ pageSlug → originalPageName ]
-    private static $pageToSlug = array();  // originalCatName → [ originalPageName → pageSlug ]
+    private static array $catBySlug  = [];  // catSlug  → originalCatName
+    private static array $catToSlug  = [];  // originalCatName → catSlug
+    private static array $pageBySlug = [];  // catSlug → [ pageSlug → originalPageName ]
+    private static array $pageToSlug = [];  // originalCatName → [ originalPageName → pageSlug ]
     private static $mapsBuilt  = false;
 
     /**
@@ -39,7 +39,7 @@ class _seo_urls extends Plugin {
 
     const VERSION = 'v1.3.4';
 
-    const SYSTEM_PATHS = array(
+    const SYSTEM_PATHS = [
         'admin',
         'cms',
         'plugins',
@@ -49,7 +49,7 @@ class _seo_urls extends Plugin {
         'kategorien',
         'data',
         'files'
-    );
+    ];
 
     /**
      * Name des MetaKeywordsDescription Plugins.
@@ -87,7 +87,7 @@ class _seo_urls extends Plugin {
             // nachdem $_GET['cat'] und $_GET['page'] korrekt gesetzt wurden.
             self::applyMetaKeywordsDescription();
 
-            ob_start(array('_seo_urls', 'rewriteOutput'));
+            ob_start(['_seo_urls', 'rewriteOutput']);
         }
 
         return '';
@@ -99,7 +99,7 @@ class _seo_urls extends Plugin {
         foreach (self::$catBySlug as $catSlug => $catRaw) {
             $catDecoded = urldecode($catRaw);
             echo "  [{$catDecoded}] → /{$catSlug}/\n";
-            $pages = isset(self::$pageBySlug[$catSlug]) ? self::$pageBySlug[$catSlug] : array();
+            $pages = isset(self::$pageBySlug[$catSlug]) ? self::$pageBySlug[$catSlug] : [];
             foreach ($pages as $pageSlug => $pageRaw) {
                 echo "       [" . urldecode($pageRaw) . "] → /{$catSlug}/{$pageSlug}/\n";
             }
@@ -109,12 +109,12 @@ class _seo_urls extends Plugin {
 
     function getConfig() {
 
-        $config = array();
+        $config = [];
 
-        $config['debug_enabled'] = array(
+        $config['debug_enabled'] = [
             'type'        => 'checkbox',
             'description' => 'Debug-Modus aktivieren (Slug-Map unter /?seo_debug=1 abrufbar)'
-        );
+        ];
 
         return $config;
     }
@@ -168,7 +168,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
 ';
 
-        $info = array(
+        $info = [
             '<b>seo_urls</b> ' . self::VERSION,
             '2.0 / 3.0',  // Hinweis: moziloCMS prüft ob '2' im String enthalten ist.
             // Fehlt die '2', deaktiviert der Admin das Plugin automatisch.
@@ -176,8 +176,8 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             $description,
             '',
             '',
-            array('seo', 'url', 'rewrite', 'slug')
-        );
+            ['seo', 'url', 'rewrite', 'slug']
+        ];
 
         return $info;
     }
@@ -194,7 +194,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
         global $CatPage;
 
-        $pageTypes = array(EXT_PAGE);
+        $pageTypes = [EXT_PAGE];
         if (defined('EXT_HIDDEN')) {
             $pageTypes[] = EXT_HIDDEN;
         }
@@ -219,7 +219,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
             $pages = $CatPage->get_PageArray($catName, $pageTypes, true);
 
-            $pageSlugsForCat = isset(self::$pageBySlug[$catSlug]) ? self::$pageBySlug[$catSlug] : array();
+            $pageSlugsForCat = isset(self::$pageBySlug[$catSlug]) ? self::$pageBySlug[$catSlug] : [];
 
             foreach ($pages as $pageName) {
                 $pageDecoded = urldecode($pageName);
@@ -671,7 +671,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     public static function rewriteOutput($html) {
         $html = preg_replace_callback(
             '/(href|action)=(["\'])(?!https?:\/\/|\/\/|mailto:|tel:|javascript:|data:)([^"\'#?]+(?:\.html|\/))(\\?[^"\'#]*)?(\#[^"\']*)?\2/i',
-            array('_seo_urls', 'rewriteCallback'),
+            ['_seo_urls', 'rewriteCallback'],
             $html
         );
 
@@ -763,7 +763,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     // -----------------------------------------------------------------------
 
     public static function slugify($text) {
-        static $map = array(
+        static $map = [
             // Deutsche Umlaute und ß.
             // Großvarianten (Ä, Ö, Ü) nicht nötig – mb_strtolower() läuft zuerst.
             // ß ist von mb_strtolower() unberührt und wird korrekt zu 'ss'.
@@ -792,7 +792,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             'î' => 'i',
             'ñ' => 'n',
             'ç' => 'c',
-        );
+        ];
 
         // Erst lowercase, dann transliterieren: Großakzente (É, À, …) werden
         // durch mb_strtolower() zu é, à, … und sind dann in der Map enthalten.
