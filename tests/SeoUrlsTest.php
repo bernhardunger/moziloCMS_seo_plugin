@@ -816,6 +816,45 @@ class SeoUrlsTest extends TestCase {
         $this->assertFalse($rules['hasSitemap'] && $rules['hasCatchAll']);
     }
 
+    public function testIsHtaccessValidCacheBefuelltNachErstemAufruf(): void {
+        // In Testumgebung: BASE_DIR nicht definiert → sofort true ohne Dateizugriff
+        $this->assertNull(self::getStaticProp('htaccessValidCache'), 'Cache initial null');
+        $result = self::callStatic('isHtaccessValid');
+        $this->assertTrue($result);
+        $this->assertTrue(self::getStaticProp('htaccessValidCache'), 'Cache nach Aufruf befüllt');
+    }
+
+    public function testIsHtaccessValidCacheWirdDurchResetZurueckgesetzt(): void {
+        self::callStatic('isHtaccessValid');
+        $this->assertNotNull(self::getStaticProp('htaccessValidCache'));
+        self::resetStaticState();
+        $this->assertNull(self::getStaticProp('htaccessValidCache'), 'Cache nach Reset null');
+    }
+
+    /**
+     * Beweist dass isHtaccessValid() die Datei nur einmal pro Request liest:
+     * Nach dem ersten Aufruf (Datei vorhanden und valide) wird die .htaccess
+     * gelöscht – der zweite Aufruf muss dennoch true liefern (aus Cache).
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testIsHtaccessValidLiestDateiNurEinmalProRequest(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        mkdir($tmpBase);
+        file_put_contents($tmpBase . '.htaccess', self::htaccessFull());
+        define('BASE_DIR', $tmpBase);
+
+        $result1 = self::callStatic('isHtaccessValid');
+        $this->assertTrue($result1, 'Erster Aufruf: gültige .htaccess → true');
+
+        unlink($tmpBase . '.htaccess'); // Datei weg – zweiter Aufruf darf nicht re-lesen
+
+        $result2 = self::callStatic('isHtaccessValid');
+        $this->assertTrue($result2, 'Zweiter Aufruf: Cache liefert true, nicht false (Datei fehlt)');
+
+        rmdir($tmpBase);
+    }
+
     // -----------------------------------------------------------------------
     // rewriteOutput() – Lookahead-Ausschlüsse
     // -----------------------------------------------------------------------
@@ -1012,6 +1051,7 @@ class SeoUrlsTest extends TestCase {
         self::setStaticProp('homeCatName',           null);
         self::setStaticProp('resolvedCanonicalPath', null);
         self::setStaticProp('redirector',            null);
+        self::setStaticProp('htaccessValidCache',    null);
     }
 
     private static function injectCatMap(array $catBySlug, array $catToSlug): void {
