@@ -765,46 +765,31 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     // Slug-Generator
     // -----------------------------------------------------------------------
 
-    public static function slugify($text) {
-        static $map = [
-            // Deutsche Umlaute und ß.
-            // Großvarianten (Ä, Ö, Ü) nicht nötig – mb_strtolower() läuft zuerst.
-            // ß ist von mb_strtolower() unberührt und wird korrekt zu 'ss'.
-            'ä' => 'ae',
-            'ö' => 'oe',
-            'ü' => 'ue',
-            'ß' => 'ss',
-            // Romanische Akzente (Kleinbuchstaben – Großvarianten nach lowercase abgedeckt)
-            'é' => 'e',
-            'è' => 'e',
-            'ê' => 'e',
-            'ë' => 'e',
-            'á' => 'a',
-            'à' => 'a',
-            'â' => 'a',
-            'ã' => 'a',
-            'ó' => 'o',
-            'ò' => 'o',
-            'ô' => 'o',
-            'õ' => 'o',
-            'ú' => 'u',
-            'ù' => 'u',
-            'û' => 'u',
-            'í' => 'i',
-            'ì' => 'i',
-            'î' => 'i',
-            'ñ' => 'n',
-            'ç' => 'c',
-        ];
-
-        // Erst lowercase, dann transliterieren: Großakzente (É, À, …) werden
-        // durch mb_strtolower() zu é, à, … und sind dann in der Map enthalten.
-        $text = mb_strtolower($text, 'UTF-8');
-        $text = str_replace(array_keys($map), array_values($map), $text);
+    public static function slugify(string $text): string {
+        // 1. Sicheres Lowercase (mit Fallback, falls mbstring fehlt)
+        $text = function_exists('mb_strtolower')
+            ? mb_strtolower($text, 'UTF-8')
+            : strtolower($text);
+        // 2. Deutsche Umlaute und ß vorab sichern (bevor iconv greift)
+        //    iconv würde sonst ä -> a statt ae, ß -> b statt ss machen.
+        $germanMap = ['ä' => 'ae', 'ö' => 'oe', 'ü' => 'ue', 'ß' => 'ss'];
+        $text = str_replace(array_keys($germanMap), array_values($germanMap), $text);
+        // 3. iconv-Trick für alle anderen romanischen Akzente (é -> e, ñ -> n, ç -> c).
+        //    Kein intl nötig; läuft auf Standard-PHP. IGNORE verhindert Abbruch bei
+        //    nicht-konvertierbaren Zeichen. Auf Linux/IONOS (Produktion) liefert iconv
+        //    é -> e direkt – der Strip ist dort ein No-op. Auf Windows (Laragon/Entwicklung)
+        //    gibt libiconv Akzente als Präfix-Zeichen aus (é -> 'e, è -> `e, ê -> ^e) –
+        //    der Strip entfernt diese Artefakte und ist primär für Windows relevant.
+        if (function_exists('iconv')) {
+            $converted = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $text);
+            if ($converted !== false) {
+                $text = str_replace(["'", '`', '^', '~', '"'], '', $converted);
+            }
+        }
+        // 4. Bereinigung: Alles außer a-z und 0-9 zu Bindestrichen
         $text = preg_replace('/[^a-z0-9]+/', '-', $text);
         $text = trim($text, '-');
-
-        return $text ? $text : 'seite';
+        return $text ?: 'seite';
     }
 
     // -----------------------------------------------------------------------
