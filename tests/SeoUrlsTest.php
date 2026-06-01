@@ -299,7 +299,7 @@ class SeoUrlsTest extends TestCase {
 
     public function testRewriteOutputSitemapActionLinkBleibtUnveraendert(): void {
         $html   = '<a href="/?action=sitemap">Sitemap</a>';
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
         $this->assertSame($html, $result);
     }
 
@@ -310,7 +310,7 @@ class SeoUrlsTest extends TestCase {
         );
 
         $html   = '<a href="/ueber-uns/?action=sitemap">Sitemap</a>';
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
 
         $this->assertStringContainsString('href="/ueber-uns/?action=sitemap"', $result);
     }
@@ -322,7 +322,7 @@ class SeoUrlsTest extends TestCase {
         );
 
         $html   = '<a href="/Über Uns/">Über Uns</a>';
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
 
         $this->assertStringContainsString('href="/ueber-uns/"', $result);
     }
@@ -347,7 +347,7 @@ class SeoUrlsTest extends TestCase {
             '<a href="https://extern.de/">Extern</a>',
         ]);
 
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
 
         $this->assertStringContainsString('href="/ueber-uns/"',       $result);
         $this->assertStringContainsString('href="/kontakt/"',          $result);
@@ -363,7 +363,7 @@ class SeoUrlsTest extends TestCase {
         self::setStaticProp('resolvedCanonicalPath', '/kontakt/');
 
         $html   = '<link rel="canonical" href="https://www.example.com/Kontakt/Anfahrt.html">';
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
 
         $this->assertStringContainsString(
             'href="https://www.example.com/kontakt/"',
@@ -373,7 +373,7 @@ class SeoUrlsTest extends TestCase {
 
     public function testRewriteOutputCanonicalBleibtOhneResolvedPath(): void {
         $html   = '<link rel="canonical" href="https://www.example.com/Kontakt/Anfahrt.html">';
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
         $this->assertSame($html, $result);
     }
 
@@ -381,7 +381,7 @@ class SeoUrlsTest extends TestCase {
         self::setStaticProp('resolvedCanonicalPath', '/ueber-uns/');
 
         $html   = '<link href="https://www.example.com/altes-ziel/" rel="canonical">';
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
 
         $this->assertStringContainsString(
             'href="https://www.example.com/ueber-uns/"',
@@ -393,7 +393,7 @@ class SeoUrlsTest extends TestCase {
         self::setStaticProp('resolvedCanonicalPath', '/ueber-uns/unser-team/');
 
         $html   = '<link rel="canonical" href="https://www.example.com/irgendwas/">';
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
 
         $this->assertStringContainsString(
             'href="https://www.example.com/ueber-uns/unser-team/"',
@@ -865,7 +865,7 @@ class SeoUrlsTest extends TestCase {
     public function testRewriteOutputIgnoriertProtokollRelativeUrls(): void {
         self::injectCatMap(['ueber-uns' => '%C3%9Cber%20Uns'], ['Über Uns' => 'ueber-uns']);
         $html   = '<a href="//cdn.example.com/bild/">Bild</a>';
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
         $this->assertSame($html, $result, 'Protokoll-relative URLs dürfen nicht umgeschrieben werden');
     }
 
@@ -875,7 +875,7 @@ class SeoUrlsTest extends TestCase {
     public function testRewriteOutputIgnoriertJavascriptLinks(): void {
         self::injectCatMap(['ueber-uns' => '%C3%9Cber%20Uns'], ['Über Uns' => 'ueber-uns']);
         $html   = '<a href="javascript:void(0)/">Klick</a>';
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
         $this->assertSame($html, $result, 'javascript:-Links dürfen nicht umgeschrieben werden');
     }
 
@@ -885,7 +885,7 @@ class SeoUrlsTest extends TestCase {
     public function testRewriteOutputIgnoriertDataUris(): void {
         self::injectCatMap(['ueber-uns' => '%C3%9Cber%20Uns'], ['Über Uns' => 'ueber-uns']);
         $html   = '<form action="data:text/plain,foo/">';
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
         $this->assertSame($html, $result, 'data:-URIs dürfen nicht umgeschrieben werden');
     }
 

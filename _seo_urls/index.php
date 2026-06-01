@@ -95,7 +95,9 @@ class _seo_urls extends Plugin {
             // nachdem $_GET['cat'] und $_GET['page'] korrekt gesetzt wurden.
             self::applyMetaKeywordsDescription();
 
-            ob_start(['_seo_urls', 'rewriteOutput']);
+            ob_start(static function(string $html): string {
+                return self::rewriteOutput($html);
+            });
         }
 
         return '';
@@ -688,13 +690,10 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     // Output-Buffer Callback
     // -----------------------------------------------------------------------
 
-    /**
-     * Wird als ob_start()-Callback aufgerufen – muss public static bleiben.
-     */
-    public static function rewriteOutput(string $html): string {
+    private static function rewriteOutput(string $html): string {
         $html = preg_replace_callback(
             '/(href|action)=(["\'])(?!https?:\/\/|\/\/|mailto:|tel:|javascript:|data:)([^"\'#?]+(?:\.html|\/))(\\?[^"\'#]*)?(\#[^"\']*)?\2/i',
-            ['_seo_urls', 'rewriteCallback'],
+            [self::class, 'rewriteCallback'],
             $html
         );
 
@@ -729,9 +728,8 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     }
 
     /**
-     * Wird als preg_replace_callback-Callback aufgerufen – muss public static bleiben.
      */
-    public static function rewriteCallback($m) {
+    private static function rewriteCallback(array $m): string {
         $attr      = $m[1];
         $quote     = $m[2];
         $origPath  = $m[3];
