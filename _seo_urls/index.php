@@ -146,6 +146,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     ob der Versionsstring die Ziffer &ldquo;2&rdquo; enth&auml;lt (<code>strpos()</code> in <code>admin/plugins.php</code>).
     Fehlt sie, deaktiviert moziloCMS das Plugin im Admin automatisch.</small></td></tr>
   <tr><td><b>PHP</b></td><td>8.1 oder höher</td></tr>
+  <tr><td><b>iconv</b></td><td>Empfohlen (für Akzent-Transliteration in <code>slugify()</code>; auf Standard-PHP und IONOS immer aktiv)</td></tr>
   <tr><td><b>.htaccess</b></td><td>Sitemap-Regel und Catch-All-Regeln erforderlich – siehe htaccess_snippet.txt</td></tr>
 </table>
 
