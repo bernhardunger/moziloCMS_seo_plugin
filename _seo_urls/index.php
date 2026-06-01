@@ -194,6 +194,8 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
         global $CatPage;
 
+        // EXT_PAGE ist in moziloCMS 3.0.x immer definiert (Voraussetzung laut getInfo()).
+        // EXT_HIDDEN ist optional – daher der separate defined()-Check.
         $pageTypes = [EXT_PAGE];
         if (defined('EXT_HIDDEN')) {
             $pageTypes[] = EXT_HIDDEN;
