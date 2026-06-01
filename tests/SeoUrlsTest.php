@@ -22,6 +22,8 @@ require_once __DIR__ . '/../_seo_urls/index.php';
 
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
 
 class SeoUrlsTest extends TestCase {
     // -----------------------------------------------------------------------
@@ -905,6 +907,78 @@ class SeoUrlsTest extends TestCase {
         $plugin = new _seo_urls();
         $this->assertSame('', $plugin->getPluginContent(''));
         $this->assertSame('', $plugin->getPluginContent('other_value'));
+    }
+
+    // -----------------------------------------------------------------------
+    // applyMetaKeywordsDescription() – RunInSeparateProcess wegen BASE_DIR-Konstante
+    // -----------------------------------------------------------------------
+
+    /**
+     * Korrupter $raw-String → kein Fatal Error, kein Meta-Tag gesetzt.
+     * Testet graceful degradation: unserialize schlägt fehl (try-catch oder is_array-Guard),
+     * $template bleibt unverändert.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testApplyMetaKeywordsDescriptionKorrupteKonfiguration(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        $confDir = $tmpBase . 'plugins' . DIRECTORY_SEPARATOR . 'MetaKeywordsDescription' . DIRECTORY_SEPARATOR;
+        mkdir($confDir, 0777, true);
+        // "a:" vorhanden damit strpos() passt – der Rest ist absichtlich korrupt
+        file_put_contents($confDir . 'plugin.conf.php', "<?php die();\na:KORRUPT{{{");
+        define('BASE_DIR', $tmpBase);
+
+        global $template;
+        $template = '{WEBSITE_DESCRIPTION}';
+        $_GET = ['cat' => 'Kontakt', 'page' => 'team'];
+
+        $ref = new \ReflectionMethod('_seo_urls', 'applyMetaKeywordsDescription');
+        $ref->setAccessible(true);
+        // unserialize() emittiert E_WARNING bei korruptem Input (kein Exception).
+        // Im Test unterdrücken – in Production ist das Warning im Error-Log erwünscht.
+        set_error_handler(static fn() => true, E_WARNING);
+        $ref->invoke(null);
+        restore_error_handler();
+
+        $this->assertSame('{WEBSITE_DESCRIPTION}', $template, 'Kein Meta-Tag bei korrupter conf');
+
+        unlink($confDir . 'plugin.conf.php');
+        rmdir($confDir);
+        rmdir($tmpBase . 'plugins');
+        rmdir($tmpBase);
+    }
+
+    /**
+     * Valider $raw-String → {WEBSITE_DESCRIPTION} wird korrekt ersetzt.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testApplyMetaKeywordsDescriptionValideKonfiguration(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        $confDir = $tmpBase . 'plugins' . DIRECTORY_SEPARATOR . 'MetaKeywordsDescription' . DIRECTORY_SEPARATOR;
+        mkdir($confDir, 0777, true);
+
+        $cat  = 'Kontakt';
+        $page = 'team';
+        $key  = '@=' . $cat . ':' . $page . '=@';
+        $conf = [$key => ['description' => 'Meine Beschreibung', 'keywords' => 'php,test']];
+        file_put_contents($confDir . 'plugin.conf.php', "<?php die();\n" . serialize($conf));
+        define('BASE_DIR', $tmpBase);
+
+        global $template;
+        $template = 'VOR {WEBSITE_DESCRIPTION} NACH';
+        $_GET = ['cat' => $cat, 'page' => $page];
+
+        $ref = new \ReflectionMethod('_seo_urls', 'applyMetaKeywordsDescription');
+        $ref->setAccessible(true);
+        $ref->invoke(null);
+
+        $this->assertSame('VOR Meine Beschreibung NACH', $template, 'Beschreibung korrekt ersetzt');
+
+        unlink($confDir . 'plugin.conf.php');
+        rmdir($confDir);
+        rmdir($tmpBase . 'plugins');
+        rmdir($tmpBase);
     }
 
     // -----------------------------------------------------------------------
