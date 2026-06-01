@@ -3,7 +3,7 @@ if (!defined('IS_CMS')) die();
 
 /**
  * Plugin:   seo_urls
- * @version: v1.3.4  (siehe Klassenkonstante VERSION)
+ * @version: v1.3.5  (siehe Klassenkonstante VERSION)
  * @license: GPL
  *
  * Wandelt Kategorie- und Seitennamen in SEO-freundliche URL-Slugs um.
@@ -45,7 +45,7 @@ class _seo_urls extends Plugin {
      */
     private static $redirector = null;
 
-    const VERSION = 'v1.3.4';
+    const VERSION = 'v1.3.5';
 
     const SYSTEM_PATHS = [
         'admin',

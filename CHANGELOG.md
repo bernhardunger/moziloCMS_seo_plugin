@@ -28,6 +28,17 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
   der Catch schützt vor zukünftigen PHP-Exceptions. E_WARNING erscheint weiterhin
   im PHP-Error-Log (gewünscht für Debugging auf Shared Hosting).
 
+- **F4: POST-Zweig – Raw-Page-Name wird durchgereicht**
+  In `resolveRawCatRequest()` fehlte im POST-Fall ein `else`-Zweig: War `$rawPage`
+  nicht in der Slug-Map auflösbar, blieb `$_GET['page']` ungesetzt und der
+  Seitenkontext ging verloren. Fix: `else { $_GET['page'] = $rawPage; }` analog
+  zu `resolveSlugRequest()`.
+
+- **F10: `is_string()`-Guard für `$template`-Zugriffe**
+  `$template` ist eine globale CMS-Variable. Alle `str_replace()`-Aufrufe darauf
+  sind jetzt mit `isset($template) && is_string($template)` abgesichert – verhindert
+  PHP-Warnings falls der CMS-Kern die Variable nicht als String liefert.
+
 ### Verbessert
 
 - **F9: Request-weites Caching für `isHtaccessValid()`**
@@ -56,6 +67,14 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
   `str_replace(["'","\`","^","~",'"'])` danach entfernt diese Artefakte (No-op
   auf Linux). Typ-Deklaration: `slugify(string $text): string`.
 
+- **F11: `rewriteOutput()`/`rewriteCallback()` – Information Hiding**
+  Beide Methoden waren `public static`, obwohl sie ausschließlich intern als
+  ob_start-Callback genutzt werden. Umgestellt auf `private static`. Der
+  ob_start-Aufruf nutzt jetzt eine `static function`-Closure statt des
+  Array-Callbacks `['_seo_urls', 'rewriteOutput']` – verhindert `$this`-Binding
+  und eliminiert das Lifetime-Risiko im CMS-Lifecycle. Interner Callable
+  `['_seo_urls', 'rewriteCallback']` → `[self::class, 'rewriteCallback']`.
+
 ### Dokumentation
 
 - **F3: EXT_PAGE/EXT_HIDDEN-Asymmetrie in `buildMaps()` erklärt**
@@ -65,13 +84,17 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
 
 ### Tests
 
-- 7 neue Tests: `testSlugifyIconv()`, `testApplyMetaKeywordsDescriptionKorrupteKonfiguration()`,
+- 11 neue Tests: `testSlugifyIconv()`, `testApplyMetaKeywordsDescriptionKorrupteKonfiguration()`,
   `testApplyMetaKeywordsDescriptionValideKonfiguration()`,
+  `testApplyMetaKeywordsDescriptionTemplateNullKeinFehler()`,
   `testIsHtaccessValidCacheBefuelltNachErstemAufruf()`,
   `testIsHtaccessValidCacheWirdDurchResetZurueckgesetzt()`,
-  `testIsHtaccessValidLiestDateiNurEinmalProRequest()`
+  `testIsHtaccessValidLiestDateiNurEinmalProRequest()`,
+  `testHandleRequestPostUnbekannteSeiteSetzGetPageFallback()`,
+  `testHandleRequestPostUnbekannteCatKeinGetGesetzt()`
 - `resetStaticState()` um `htaccessValidCache = null` ergänzt
-- 81 Tests grün, 1 skipped (unverändert)
+- Alle `_seo_urls::rewriteOutput()`-Testaufrufe auf `callStatic()` migriert (Visibility-Änderung F11)
+- 84 Tests grün, 1 skipped (unverändert)
 
 ---
 
