@@ -633,6 +633,8 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
                 $_GET['page'] = isset(self::$pageBySlug[self::$catToSlug[$rawCat]][$pageSlug])
                     ? self::$pageBySlug[self::$catToSlug[$rawCat]][$pageSlug]
                     : $rawPage;
+            } elseif ($rawPage !== null) {
+                $_GET['page'] = $rawPage; // Fallback: Raw-Page-Name durchreichen
             }
         }
     }

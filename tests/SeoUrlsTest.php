@@ -673,6 +673,41 @@ class SeoUrlsTest extends TestCase {
     }
 
     /**
+     * POST, Kategorie bekannt, Seite nicht in Map → $_GET['page'] = rawPage (Fallback, F4).
+     */
+    public function testHandleRequestPostUnbekannteSeiteSetzGetPageFallback(): void {
+        self::injectCatMap(
+            ['ueber-uns' => 'Über%20Uns'],
+            ['Über Uns' => 'ueber-uns', 'Über%20Uns' => 'ueber-uns']
+        );
+        self::injectPageMap('ueber-uns', 'Über%20Uns', []); // leere Page-Map → Seite unbekannt
+
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_SERVER['REQUEST_URI']    = '/Über Uns/Unbekannte Seite/';
+
+        self::callStatic('handleRequest');
+
+        $this->assertSame('Über%20Uns',       $_GET['cat']  ?? null);
+        $this->assertSame('Unbekannte Seite', $_GET['page'] ?? null,
+            'Fallback: Raw-Page-Name wird durchgereicht wenn nicht in Slug-Map');
+    }
+
+    /**
+     * POST, Kategorie unbekannt → $_GET bleibt unverändert (Regression F4).
+     */
+    public function testHandleRequestPostUnbekannteCatKeinGetGesetzt(): void {
+        self::injectCatMap([], []); // leere Map
+
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_SERVER['REQUEST_URI']    = '/Unbekannte-Kat/Unbekannte-Seite/';
+
+        self::callStatic('handleRequest');
+
+        $this->assertArrayNotHasKey('cat',  $_GET, '$_GET[cat] darf nicht gesetzt sein');
+        $this->assertArrayNotHasKey('page', $_GET, '$_GET[page] darf nicht gesetzt sein');
+    }
+
+    /**
      * Wenn moziloCMS-Parameter bereits im Query-String stehen
      * (z.B. ?cat=Bungalow&page=114&action=114), darf das Plugin
      * nicht eingreifen – sonst gehen die Parameter beim Redirect verloren.
