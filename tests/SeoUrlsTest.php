@@ -84,6 +84,17 @@ class SeoUrlsTest extends TestCase {
         $this->assertSame('seite', _seo_urls::slugify('!!!'));
     }
 
+    /**
+     * iconv-Pfad: ß via germanMap, romanische Akzente und nordische Zeichen via iconv.
+     * Ångström: ö→oe (germanMap greift zuerst), å→a (iconv) → angstroem.
+     */
+    public function testSlugifyIconv(): void {
+        $this->assertSame('fussball',  _seo_urls::slugify('Fußball'));
+        $this->assertSame('strasse',   _seo_urls::slugify('Straße'));
+        $this->assertSame('cafe',      _seo_urls::slugify('café'));
+        $this->assertSame('angstroem', _seo_urls::slugify('Ångström'));
+    }
+
     // -----------------------------------------------------------------------
     // isSlug()
     // -----------------------------------------------------------------------
