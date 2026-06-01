@@ -671,14 +671,14 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     /**
      * Wird als ob_start()-Callback aufgerufen – muss public static bleiben.
      */
-    public static function rewriteOutput($html) {
+    public static function rewriteOutput(string $html): string {
         $html = preg_replace_callback(
             '/(href|action)=(["\'])(?!https?:\/\/|\/\/|mailto:|tel:|javascript:|data:)([^"\'#?]+(?:\.html|\/))(\\?[^"\'#]*)?(\#[^"\']*)?\2/i',
             ['_seo_urls', 'rewriteCallback'],
             $html
         );
 
-        return self::rewriteCanonical($html);
+        return self::rewriteCanonical($html ?? '');
     }
 
     /**
