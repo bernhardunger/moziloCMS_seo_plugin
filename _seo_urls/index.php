@@ -273,7 +273,11 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
         }
         $raw = substr($raw, $pos);
 
-        $conf = @unserialize($raw, ['allowed_classes' => false]);
+        try {
+            $conf = unserialize($raw, ['allowed_classes' => false]);
+        } catch (\Throwable $e) {
+            return; // korrupte Datei → graceful degradation, kein Meta-Tag
+        }
         if (!is_array($conf)) {
             return;
         }
