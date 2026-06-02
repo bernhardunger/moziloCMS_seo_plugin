@@ -41,6 +41,16 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
 
 ### Verbessert
 
+- **`rewriteCanonical()` – stripos()-Vorcheck, Limit 1 und htmlspecialchars()**
+  Vor dem Regex-Lauf prüft `stripos()` ob überhaupt ein `canonical`-Tag im Output
+  vorhanden ist – spart den Regex komplett wenn kein Tag da ist (z.B. auf Seiten
+  ohne resolvedCanonicalPath). Limit 1 im `preg_replace_callback` macht explizit
+  dass pro Seite genau ein Canonical-Tag erwartet wird. Die Canonical-URL wird
+  zusätzlich mit `htmlspecialchars()` abgesichert (defensiv – URL ist intern gebaut,
+  enthält aber theoretisch CMS-Daten). Innerer `preg_replace` entfernt: Tag wird
+  komplett neu gebaut statt href-Attribut zu suchen/ersetzen. `static function`
+  Closure analog zu ob_start-Callback (kein `$this`-Binding).
+
 - **F9: Request-weites Caching für `isHtaccessValid()`**
   Neue Property `private static ?bool $htaccessValidCache = null;` speichert das
   Prüfergebnis für die Dauer des Requests. Hintergrund: moziloCMS ruft Plugin-Methoden

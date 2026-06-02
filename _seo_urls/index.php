@@ -705,28 +705,32 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
     /**
      * Korrigiert den <link rel="canonical">-Tag im HTML-Output.
+     * stripos()-Vorcheck spart den Regex wenn kein canonical-Tag im Output ist.
+     * Limit 1 macht explizit dass pro Seite genau ein Canonical-Tag erwartet wird.
      */
     private static function rewriteCanonical(string $html): string {
         if (self::$resolvedCanonicalPath === null) {
+            return $html;
+        }
+        if (stripos($html, 'canonical') === false) {
             return $html;
         }
         $origin = self::getSafeOrigin();
         if ($origin === '') {
             return $html;
         }
-        $base          = defined('URL_BASE') ? rtrim(URL_BASE, '/') : '';
-        $canonicalHref = $origin . $base . self::$resolvedCanonicalPath;
+        $base         = defined('URL_BASE') ? rtrim(URL_BASE, '/') : '';
+        $canonicalUrl = $origin . $base . self::$resolvedCanonicalPath;
 
         return preg_replace_callback(
-            '/<link\b[^>]*\brel=["\']canonical["\'][^>]*>/i',
-            function ($m) use ($canonicalHref) {
-                return preg_replace(
-                    '/\bhref=["\'][^"\']*["\']/',
-                    'href="' . $canonicalHref . '"',
-                    $m[0]
-                );
+            '~<link\b[^>]*\brel=["\']canonical["\'][^>]*>~i',
+            static function () use ($canonicalUrl): string {
+                return '<link rel="canonical" href="' .
+                    htmlspecialchars($canonicalUrl, ENT_QUOTES, 'UTF-8') .
+                    '">';
             },
-            $html
+            $html,
+            1
         );
     }
 
