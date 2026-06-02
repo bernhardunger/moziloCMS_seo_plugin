@@ -4,6 +4,110 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
 
 ---
 
+## [v1.3.5] – 2026-06-01
+
+### Behoben
+
+- **F5: DocBlock `isHtaccessValid()` korrigiert**
+  Die frühere Begründung für das Nicht-Cachen ("statische Properties bleiben unter
+  PHP-FPM/OPcache zwischen Requests erhalten") war sachlich falsch: PHP verwirft den
+  gesamten Klassenzustand am Requestende, auch unter FPM. Korrekter Kommentar:
+  `isHtaccessValid()` liest die `.htaccess` bei jedem Request neu, damit eine
+  Korrektur sofort wirkt. Kein funktionaler Code geändert.
+
+- **F6: `rewriteOutput()` – Rückgabetyp und Null-Absicherung**
+  Signatur von `rewriteOutput($html)` auf `rewriteOutput(string $html): string`
+  erweitert. `preg_replace_callback()` kann `null` zurückgeben (Regex-Fehler);
+  das würde `rewriteCanonical(string $html)` mit einem `TypeError` abbrechen.
+  Fix: `return self::rewriteCanonical($html ?? '');`
+
+- **F8: `@unserialize` durch `try-catch(\Throwable)` ersetzt**
+  `@`-Operator in `applyMetaKeywordsDescription()` entfernt; `unserialize()` in
+  `try-catch(\Throwable)` eingewickelt. `allowed_classes => false` bleibt.
+  Hinweis: `unserialize()` emittiert E_WARNING auf korruptem Input (kein Exception);
+  der Catch schützt vor zukünftigen PHP-Exceptions. E_WARNING erscheint weiterhin
+  im PHP-Error-Log (gewünscht für Debugging auf Shared Hosting).
+
+- **F4: POST-Zweig – Raw-Page-Name wird durchgereicht**
+  In `resolveRawCatRequest()` fehlte im POST-Fall ein `else`-Zweig: War `$rawPage`
+  nicht in der Slug-Map auflösbar, blieb `$_GET['page']` ungesetzt und der
+  Seitenkontext ging verloren. Fix: `else { $_GET['page'] = $rawPage; }` analog
+  zu `resolveSlugRequest()`.
+
+- **F10: `is_string()`-Guard für `$template`-Zugriffe**
+  `$template` ist eine globale CMS-Variable. Alle `str_replace()`-Aufrufe darauf
+  sind jetzt mit `isset($template) && is_string($template)` abgesichert – verhindert
+  PHP-Warnings falls der CMS-Kern die Variable nicht als String liefert.
+
+### Verbessert
+
+- **`rewriteCanonical()` – stripos()-Vorcheck, Limit 1 und htmlspecialchars()**
+  Vor dem Regex-Lauf prüft `stripos()` ob überhaupt ein `canonical`-Tag im Output
+  vorhanden ist – spart den Regex komplett wenn kein Tag da ist (z.B. auf Seiten
+  ohne resolvedCanonicalPath). Limit 1 im `preg_replace_callback` macht explizit
+  dass pro Seite genau ein Canonical-Tag erwartet wird. Die Canonical-URL wird
+  zusätzlich mit `htmlspecialchars()` abgesichert (defensiv – URL ist intern gebaut,
+  enthält aber theoretisch CMS-Daten). Innerer `preg_replace` entfernt: Tag wird
+  komplett neu gebaut statt href-Attribut zu suchen/ersetzen. `static function`
+  Closure analog zu ob_start-Callback (kein `$this`-Binding).
+
+- **F9: Request-weites Caching für `isHtaccessValid()`**
+  Neue Property `private static ?bool $htaccessValidCache = null;` speichert das
+  Prüfergebnis für die Dauer des Requests. Hintergrund: moziloCMS ruft Plugin-Methoden
+  mehrfach pro Seitenaufruf auf – ohne Cache würde die `.htaccess` bei jedem Aufruf
+  neu gelesen. Der Cache lebt nur für einen Request: PHP verwirft static Properties
+  am Requestende (klassische SAPIs: mod_php, CGI, FPM). Änderungen per FTP wirken
+  damit sofort beim nächsten Seitenaufruf, nicht erst nach Server-Neustart.
+
+### Refactoring
+
+- **F7: Array-Syntax modernisiert (PHP 8.1)**
+  Alle 15 `array()`-Literale auf Kurzschreibweise `[]` umgestellt. Die vier
+  statischen Slug-Map-Properties erhalten explizite `array`-Typ-Deklaration:
+  `private static array $catBySlug = []` etc. Rein syntaktisch, kein funktionaler
+  Unterschied.
+
+- **F2: `slugify()` – iconv-Transliteration statt statischer Zeichenmap**
+  Das 24-Einträge-`static $map` ersetzt durch dreistufige Pipeline:
+  (1) `mb_strtolower()` mit `strtolower()`-Fallback,
+  (2) 4-Einträge `$germanMap` (ä/ö/ü/ß, läuft vor iconv),
+  (3) `iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', …)` für übrige Akzente.
+  Auf Linux/IONOS (Produktion) liefert iconv `é→e` direkt. Auf Windows/Laragon
+  (Entwicklung) gibt libiconv Akzente als Präfix-Zeichen aus (`é→'e`); ein
+  `str_replace(["'","\`","^","~",'"'])` danach entfernt diese Artefakte (No-op
+  auf Linux). Typ-Deklaration: `slugify(string $text): string`.
+
+- **F11: `rewriteOutput()`/`rewriteCallback()` – Information Hiding**
+  Beide Methoden waren `public static`, obwohl sie ausschließlich intern als
+  ob_start-Callback genutzt werden. Umgestellt auf `private static`. Der
+  ob_start-Aufruf nutzt jetzt eine `static function`-Closure statt des
+  Array-Callbacks `['_seo_urls', 'rewriteOutput']` – verhindert `$this`-Binding
+  und eliminiert das Lifetime-Risiko im CMS-Lifecycle. Interner Callable
+  `['_seo_urls', 'rewriteCallback']` → `[self::class, 'rewriteCallback']`.
+
+### Dokumentation
+
+- **F3: EXT_PAGE/EXT_HIDDEN-Asymmetrie in `buildMaps()` erklärt**
+  Inline-Kommentar: `EXT_PAGE` ist in moziloCMS 3.0.x immer definiert (Kernkonstante,
+  Voraussetzung laut `getInfo()`). `EXT_HIDDEN` ist optional – daher der separate
+  `defined()`-Check. Kein Code geändert.
+
+### Tests
+
+- 11 neue Tests: `testSlugifyIconv()`, `testApplyMetaKeywordsDescriptionKorrupteKonfiguration()`,
+  `testApplyMetaKeywordsDescriptionValideKonfiguration()`,
+  `testApplyMetaKeywordsDescriptionTemplateNullKeinFehler()`,
+  `testIsHtaccessValidCacheBefuelltNachErstemAufruf()`,
+  `testIsHtaccessValidCacheWirdDurchResetZurueckgesetzt()`,
+  `testIsHtaccessValidLiestDateiNurEinmalProRequest()`,
+  `testHandleRequestPostUnbekannteSeiteSetzGetPageFallback()`,
+  `testHandleRequestPostUnbekannteCatKeinGetGesetzt()`
+- `resetStaticState()` um `htaccessValidCache = null` ergänzt
+- Alle `_seo_urls::rewriteOutput()`-Testaufrufe auf `callStatic()` migriert (Visibility-Änderung F11)
+- 84 Tests grün, 1 skipped (unverändert)
+
+---
+
 ## [v1.3.4] – 2026-05-30
 
 ### Refactoring

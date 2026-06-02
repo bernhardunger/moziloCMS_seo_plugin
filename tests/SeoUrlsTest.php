@@ -22,6 +22,8 @@ require_once __DIR__ . '/../_seo_urls/index.php';
 
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
 
 class SeoUrlsTest extends TestCase {
     // -----------------------------------------------------------------------
@@ -82,6 +84,17 @@ class SeoUrlsTest extends TestCase {
     public function testSlugifyFallback(): void {
         $this->assertSame('seite', _seo_urls::slugify('---'));
         $this->assertSame('seite', _seo_urls::slugify('!!!'));
+    }
+
+    /**
+     * iconv-Pfad: ß via germanMap, romanische Akzente und nordische Zeichen via iconv.
+     * Ångström: ö→oe (germanMap greift zuerst), å→a (iconv) → angstroem.
+     */
+    public function testSlugifyIconv(): void {
+        $this->assertSame('fussball',  _seo_urls::slugify('Fußball'));
+        $this->assertSame('strasse',   _seo_urls::slugify('Straße'));
+        $this->assertSame('cafe',      _seo_urls::slugify('café'));
+        $this->assertSame('angstroem', _seo_urls::slugify('Ångström'));
     }
 
     // -----------------------------------------------------------------------
@@ -286,7 +299,7 @@ class SeoUrlsTest extends TestCase {
 
     public function testRewriteOutputSitemapActionLinkBleibtUnveraendert(): void {
         $html   = '<a href="/?action=sitemap">Sitemap</a>';
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
         $this->assertSame($html, $result);
     }
 
@@ -297,7 +310,7 @@ class SeoUrlsTest extends TestCase {
         );
 
         $html   = '<a href="/ueber-uns/?action=sitemap">Sitemap</a>';
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
 
         $this->assertStringContainsString('href="/ueber-uns/?action=sitemap"', $result);
     }
@@ -309,7 +322,7 @@ class SeoUrlsTest extends TestCase {
         );
 
         $html   = '<a href="/Über Uns/">Über Uns</a>';
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
 
         $this->assertStringContainsString('href="/ueber-uns/"', $result);
     }
@@ -334,7 +347,7 @@ class SeoUrlsTest extends TestCase {
             '<a href="https://extern.de/">Extern</a>',
         ]);
 
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
 
         $this->assertStringContainsString('href="/ueber-uns/"',       $result);
         $this->assertStringContainsString('href="/kontakt/"',          $result);
@@ -350,7 +363,7 @@ class SeoUrlsTest extends TestCase {
         self::setStaticProp('resolvedCanonicalPath', '/kontakt/');
 
         $html   = '<link rel="canonical" href="https://www.example.com/Kontakt/Anfahrt.html">';
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
 
         $this->assertStringContainsString(
             'href="https://www.example.com/kontakt/"',
@@ -360,7 +373,7 @@ class SeoUrlsTest extends TestCase {
 
     public function testRewriteOutputCanonicalBleibtOhneResolvedPath(): void {
         $html   = '<link rel="canonical" href="https://www.example.com/Kontakt/Anfahrt.html">';
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
         $this->assertSame($html, $result);
     }
 
@@ -368,7 +381,7 @@ class SeoUrlsTest extends TestCase {
         self::setStaticProp('resolvedCanonicalPath', '/ueber-uns/');
 
         $html   = '<link href="https://www.example.com/altes-ziel/" rel="canonical">';
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
 
         $this->assertStringContainsString(
             'href="https://www.example.com/ueber-uns/"',
@@ -380,7 +393,7 @@ class SeoUrlsTest extends TestCase {
         self::setStaticProp('resolvedCanonicalPath', '/ueber-uns/unser-team/');
 
         $html   = '<link rel="canonical" href="https://www.example.com/irgendwas/">';
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
 
         $this->assertStringContainsString(
             'href="https://www.example.com/ueber-uns/unser-team/"',
@@ -660,6 +673,41 @@ class SeoUrlsTest extends TestCase {
     }
 
     /**
+     * POST, Kategorie bekannt, Seite nicht in Map → $_GET['page'] = rawPage (Fallback, F4).
+     */
+    public function testHandleRequestPostUnbekannteSeiteSetzGetPageFallback(): void {
+        self::injectCatMap(
+            ['ueber-uns' => 'Über%20Uns'],
+            ['Über Uns' => 'ueber-uns', 'Über%20Uns' => 'ueber-uns']
+        );
+        self::injectPageMap('ueber-uns', 'Über%20Uns', []); // leere Page-Map → Seite unbekannt
+
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_SERVER['REQUEST_URI']    = '/Über Uns/Unbekannte Seite/';
+
+        self::callStatic('handleRequest');
+
+        $this->assertSame('Über%20Uns',       $_GET['cat']  ?? null);
+        $this->assertSame('Unbekannte Seite', $_GET['page'] ?? null,
+            'Fallback: Raw-Page-Name wird durchgereicht wenn nicht in Slug-Map');
+    }
+
+    /**
+     * POST, Kategorie unbekannt → $_GET bleibt unverändert (Regression F4).
+     */
+    public function testHandleRequestPostUnbekannteCatKeinGetGesetzt(): void {
+        self::injectCatMap([], []); // leere Map
+
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_SERVER['REQUEST_URI']    = '/Unbekannte-Kat/Unbekannte-Seite/';
+
+        self::callStatic('handleRequest');
+
+        $this->assertArrayNotHasKey('cat',  $_GET, '$_GET[cat] darf nicht gesetzt sein');
+        $this->assertArrayNotHasKey('page', $_GET, '$_GET[page] darf nicht gesetzt sein');
+    }
+
+    /**
      * Wenn moziloCMS-Parameter bereits im Query-String stehen
      * (z.B. ?cat=Bungalow&page=114&action=114), darf das Plugin
      * nicht eingreifen – sonst gehen die Parameter beim Redirect verloren.
@@ -803,6 +851,45 @@ class SeoUrlsTest extends TestCase {
         $this->assertFalse($rules['hasSitemap'] && $rules['hasCatchAll']);
     }
 
+    public function testIsHtaccessValidCacheBefuelltNachErstemAufruf(): void {
+        // In Testumgebung: BASE_DIR nicht definiert → sofort true ohne Dateizugriff
+        $this->assertNull(self::getStaticProp('htaccessValidCache'), 'Cache initial null');
+        $result = self::callStatic('isHtaccessValid');
+        $this->assertTrue($result);
+        $this->assertTrue(self::getStaticProp('htaccessValidCache'), 'Cache nach Aufruf befüllt');
+    }
+
+    public function testIsHtaccessValidCacheWirdDurchResetZurueckgesetzt(): void {
+        self::callStatic('isHtaccessValid');
+        $this->assertNotNull(self::getStaticProp('htaccessValidCache'));
+        self::resetStaticState();
+        $this->assertNull(self::getStaticProp('htaccessValidCache'), 'Cache nach Reset null');
+    }
+
+    /**
+     * Beweist dass isHtaccessValid() die Datei nur einmal pro Request liest:
+     * Nach dem ersten Aufruf (Datei vorhanden und valide) wird die .htaccess
+     * gelöscht – der zweite Aufruf muss dennoch true liefern (aus Cache).
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testIsHtaccessValidLiestDateiNurEinmalProRequest(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        mkdir($tmpBase);
+        file_put_contents($tmpBase . '.htaccess', self::htaccessFull());
+        define('BASE_DIR', $tmpBase);
+
+        $result1 = self::callStatic('isHtaccessValid');
+        $this->assertTrue($result1, 'Erster Aufruf: gültige .htaccess → true');
+
+        unlink($tmpBase . '.htaccess'); // Datei weg – zweiter Aufruf darf nicht re-lesen
+
+        $result2 = self::callStatic('isHtaccessValid');
+        $this->assertTrue($result2, 'Zweiter Aufruf: Cache liefert true, nicht false (Datei fehlt)');
+
+        rmdir($tmpBase);
+    }
+
     // -----------------------------------------------------------------------
     // rewriteOutput() – Lookahead-Ausschlüsse
     // -----------------------------------------------------------------------
@@ -813,7 +900,7 @@ class SeoUrlsTest extends TestCase {
     public function testRewriteOutputIgnoriertProtokollRelativeUrls(): void {
         self::injectCatMap(['ueber-uns' => '%C3%9Cber%20Uns'], ['Über Uns' => 'ueber-uns']);
         $html   = '<a href="//cdn.example.com/bild/">Bild</a>';
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
         $this->assertSame($html, $result, 'Protokoll-relative URLs dürfen nicht umgeschrieben werden');
     }
 
@@ -823,7 +910,7 @@ class SeoUrlsTest extends TestCase {
     public function testRewriteOutputIgnoriertJavascriptLinks(): void {
         self::injectCatMap(['ueber-uns' => '%C3%9Cber%20Uns'], ['Über Uns' => 'ueber-uns']);
         $html   = '<a href="javascript:void(0)/">Klick</a>';
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
         $this->assertSame($html, $result, 'javascript:-Links dürfen nicht umgeschrieben werden');
     }
 
@@ -833,7 +920,7 @@ class SeoUrlsTest extends TestCase {
     public function testRewriteOutputIgnoriertDataUris(): void {
         self::injectCatMap(['ueber-uns' => '%C3%9Cber%20Uns'], ['Über Uns' => 'ueber-uns']);
         $html   = '<form action="data:text/plain,foo/">';
-        $result = _seo_urls::rewriteOutput($html);
+        $result = self::callStatic('rewriteOutput', $html);
         $this->assertSame($html, $result, 'data:-URIs dürfen nicht umgeschrieben werden');
     }
 
@@ -897,6 +984,110 @@ class SeoUrlsTest extends TestCase {
     }
 
     // -----------------------------------------------------------------------
+    // applyMetaKeywordsDescription() – RunInSeparateProcess wegen BASE_DIR-Konstante
+    // -----------------------------------------------------------------------
+
+    /**
+     * Korrupter $raw-String → kein Fatal Error, kein Meta-Tag gesetzt.
+     * Testet graceful degradation: unserialize schlägt fehl (try-catch oder is_array-Guard),
+     * $template bleibt unverändert.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testApplyMetaKeywordsDescriptionKorrupteKonfiguration(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        $confDir = $tmpBase . 'plugins' . DIRECTORY_SEPARATOR . 'MetaKeywordsDescription' . DIRECTORY_SEPARATOR;
+        mkdir($confDir, 0777, true);
+        // "a:" vorhanden damit strpos() passt – der Rest ist absichtlich korrupt
+        file_put_contents($confDir . 'plugin.conf.php', "<?php die();\na:KORRUPT{{{");
+        define('BASE_DIR', $tmpBase);
+
+        global $template;
+        $template = '{WEBSITE_DESCRIPTION}';
+        $_GET = ['cat' => 'Kontakt', 'page' => 'team'];
+
+        $ref = new \ReflectionMethod('_seo_urls', 'applyMetaKeywordsDescription');
+        $ref->setAccessible(true);
+        // unserialize() emittiert E_WARNING bei korruptem Input (kein Exception).
+        // Im Test unterdrücken – in Production ist das Warning im Error-Log erwünscht.
+        set_error_handler(static fn() => true, E_WARNING);
+        $ref->invoke(null);
+        restore_error_handler();
+
+        $this->assertSame('{WEBSITE_DESCRIPTION}', $template, 'Kein Meta-Tag bei korrupter conf');
+
+        unlink($confDir . 'plugin.conf.php');
+        rmdir($confDir);
+        rmdir($tmpBase . 'plugins');
+        rmdir($tmpBase);
+    }
+
+    /**
+     * Valider $raw-String → {WEBSITE_DESCRIPTION} wird korrekt ersetzt.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testApplyMetaKeywordsDescriptionValideKonfiguration(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        $confDir = $tmpBase . 'plugins' . DIRECTORY_SEPARATOR . 'MetaKeywordsDescription' . DIRECTORY_SEPARATOR;
+        mkdir($confDir, 0777, true);
+
+        $cat  = 'Kontakt';
+        $page = 'team';
+        $key  = '@=' . $cat . ':' . $page . '=@';
+        $conf = [$key => ['description' => 'Meine Beschreibung', 'keywords' => 'php,test']];
+        file_put_contents($confDir . 'plugin.conf.php', "<?php die();\n" . serialize($conf));
+        define('BASE_DIR', $tmpBase);
+
+        global $template;
+        $template = 'VOR {WEBSITE_DESCRIPTION} NACH';
+        $_GET = ['cat' => $cat, 'page' => $page];
+
+        $ref = new \ReflectionMethod('_seo_urls', 'applyMetaKeywordsDescription');
+        $ref->setAccessible(true);
+        $ref->invoke(null);
+
+        $this->assertSame('VOR Meine Beschreibung NACH', $template, 'Beschreibung korrekt ersetzt');
+
+        unlink($confDir . 'plugin.conf.php');
+        rmdir($confDir);
+        rmdir($tmpBase . 'plugins');
+        rmdir($tmpBase);
+    }
+
+    /**
+     * $template = null → kein TypeError, kein str_replace-Aufruf, $template bleibt null.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testApplyMetaKeywordsDescriptionTemplateNullKeinFehler(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        $confDir = $tmpBase . 'plugins' . DIRECTORY_SEPARATOR . 'MetaKeywordsDescription' . DIRECTORY_SEPARATOR;
+        mkdir($confDir, 0777, true);
+
+        $cat  = 'Kontakt';
+        $page = 'team';
+        $key  = '@=' . $cat . ':' . $page . '=@';
+        $conf = [$key => ['description' => 'Beschreibung', 'keywords' => 'test,php']];
+        file_put_contents($confDir . 'plugin.conf.php', "<?php die();\n" . serialize($conf));
+        define('BASE_DIR', $tmpBase);
+
+        $GLOBALS['template'] = null;
+        $_GET = ['cat' => $cat, 'page' => $page];
+
+        $ref = new \ReflectionMethod('_seo_urls', 'applyMetaKeywordsDescription');
+        $ref->setAccessible(true);
+        $ref->invoke(null); // kein Fatal Error, kein TypeError
+
+        $this->assertNull($GLOBALS['template'], 'template bleibt null – str_replace wird nicht aufgerufen');
+
+        unlink($confDir . 'plugin.conf.php');
+        rmdir($confDir);
+        rmdir($tmpBase . 'plugins');
+        rmdir($tmpBase);
+    }
+
+    // -----------------------------------------------------------------------
     // Reflection- und Injektions-Hilfsmethoden
     // -----------------------------------------------------------------------
 
@@ -927,6 +1118,7 @@ class SeoUrlsTest extends TestCase {
         self::setStaticProp('homeCatName',           null);
         self::setStaticProp('resolvedCanonicalPath', null);
         self::setStaticProp('redirector',            null);
+        self::setStaticProp('htaccessValidCache',    null);
     }
 
     private static function injectCatMap(array $catBySlug, array $catToSlug): void {

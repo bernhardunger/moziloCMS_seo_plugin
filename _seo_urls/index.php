@@ -3,7 +3,7 @@ if (!defined('IS_CMS')) die();
 
 /**
  * Plugin:   seo_urls
- * @version: v1.3.4  (siehe Klassenkonstante VERSION)
+ * @version: v1.3.5  (siehe Klassenkonstante VERSION)
  * @license: GPL
  *
  * Wandelt Kategorie- und Seitennamen in SEO-freundliche URL-Slugs um.
@@ -16,11 +16,19 @@ class _seo_urls extends Plugin {
     // Slug-Maps
     // -----------------------------------------------------------------------
 
-    private static $catBySlug  = array();  // catSlug  → originalCatName
-    private static $catToSlug  = array();  // originalCatName → catSlug
-    private static $pageBySlug = array();  // catSlug → [ pageSlug → originalPageName ]
-    private static $pageToSlug = array();  // originalCatName → [ originalPageName → pageSlug ]
+    private static array $catBySlug  = [];  // catSlug  → originalCatName
+    private static array $catToSlug  = [];  // originalCatName → catSlug
+    private static array $pageBySlug = [];  // catSlug → [ pageSlug → originalPageName ]
+    private static array $pageToSlug = [];  // originalCatName → [ originalPageName → pageSlug ]
     private static $mapsBuilt  = false;
+
+    /**
+     * Request-weiter Cache für isHtaccessValid().
+     * Lebt nur für die Dauer eines Requests – PHP verwirft static Properties
+     * am Requestende (klassische SAPIs). Verhindert redundante
+     * file_get_contents()-Aufrufe innerhalb eines Requests.
+     */
+    private static ?bool $htaccessValidCache = null;
 
     /**
      * URL-kodierter Name der ersten CMS-Kategorie (= Homepage).
@@ -37,9 +45,9 @@ class _seo_urls extends Plugin {
      */
     private static $redirector = null;
 
-    const VERSION = 'v1.3.4';
+    const VERSION = 'v1.3.5';
 
-    const SYSTEM_PATHS = array(
+    const SYSTEM_PATHS = [
         'admin',
         'cms',
         'plugins',
@@ -49,7 +57,7 @@ class _seo_urls extends Plugin {
         'kategorien',
         'data',
         'files'
-    );
+    ];
 
     /**
      * Name des MetaKeywordsDescription Plugins.
@@ -87,7 +95,9 @@ class _seo_urls extends Plugin {
             // nachdem $_GET['cat'] und $_GET['page'] korrekt gesetzt wurden.
             self::applyMetaKeywordsDescription();
 
-            ob_start(array('_seo_urls', 'rewriteOutput'));
+            ob_start(static function(string $html): string {
+                return self::rewriteOutput($html);
+            });
         }
 
         return '';
@@ -99,7 +109,7 @@ class _seo_urls extends Plugin {
         foreach (self::$catBySlug as $catSlug => $catRaw) {
             $catDecoded = urldecode($catRaw);
             echo "  [{$catDecoded}] → /{$catSlug}/\n";
-            $pages = isset(self::$pageBySlug[$catSlug]) ? self::$pageBySlug[$catSlug] : array();
+            $pages = isset(self::$pageBySlug[$catSlug]) ? self::$pageBySlug[$catSlug] : [];
             foreach ($pages as $pageSlug => $pageRaw) {
                 echo "       [" . urldecode($pageRaw) . "] → /{$catSlug}/{$pageSlug}/\n";
             }
@@ -109,12 +119,12 @@ class _seo_urls extends Plugin {
 
     function getConfig() {
 
-        $config = array();
+        $config = [];
 
-        $config['debug_enabled'] = array(
+        $config['debug_enabled'] = [
             'type'        => 'checkbox',
             'description' => 'Debug-Modus aktivieren (Slug-Map unter /?seo_debug=1 abrufbar)'
-        );
+        ];
 
         return $config;
     }
@@ -136,6 +146,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     ob der Versionsstring die Ziffer &ldquo;2&rdquo; enth&auml;lt (<code>strpos()</code> in <code>admin/plugins.php</code>).
     Fehlt sie, deaktiviert moziloCMS das Plugin im Admin automatisch.</small></td></tr>
   <tr><td><b>PHP</b></td><td>8.1 oder höher</td></tr>
+  <tr><td><b>iconv</b></td><td>Empfohlen (für Akzent-Transliteration in <code>slugify()</code>; auf Standard-PHP und IONOS immer aktiv)</td></tr>
   <tr><td><b>.htaccess</b></td><td>Sitemap-Regel und Catch-All-Regeln erforderlich – siehe htaccess_snippet.txt</td></tr>
 </table>
 
@@ -168,7 +179,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
 ';
 
-        $info = array(
+        $info = [
             '<b>seo_urls</b> ' . self::VERSION,
             '2.0 / 3.0',  // Hinweis: moziloCMS prüft ob '2' im String enthalten ist.
             // Fehlt die '2', deaktiviert der Admin das Plugin automatisch.
@@ -176,8 +187,8 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             $description,
             '',
             '',
-            array('seo', 'url', 'rewrite', 'slug')
-        );
+            ['seo', 'url', 'rewrite', 'slug']
+        ];
 
         return $info;
     }
@@ -194,7 +205,9 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
         global $CatPage;
 
-        $pageTypes = array(EXT_PAGE);
+        // EXT_PAGE ist in moziloCMS 3.0.x immer definiert (Voraussetzung laut getInfo()).
+        // EXT_HIDDEN ist optional – daher der separate defined()-Check.
+        $pageTypes = [EXT_PAGE];
         if (defined('EXT_HIDDEN')) {
             $pageTypes[] = EXT_HIDDEN;
         }
@@ -219,7 +232,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
             $pages = $CatPage->get_PageArray($catName, $pageTypes, true);
 
-            $pageSlugsForCat = isset(self::$pageBySlug[$catSlug]) ? self::$pageBySlug[$catSlug] : array();
+            $pageSlugsForCat = isset(self::$pageBySlug[$catSlug]) ? self::$pageBySlug[$catSlug] : [];
 
             foreach ($pages as $pageName) {
                 $pageDecoded = urldecode($pageName);
@@ -271,7 +284,11 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
         }
         $raw = substr($raw, $pos);
 
-        $conf = @unserialize($raw, ['allowed_classes' => false]);
+        try {
+            $conf = unserialize($raw, ['allowed_classes' => false]);
+        } catch (\Throwable $e) {
+            return; // korrupte Datei → graceful degradation, kein Meta-Tag
+        }
         if (!is_array($conf)) {
             return;
         }
@@ -304,11 +321,15 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
         global $template;
 
         if (!empty($setting['description']) && strlen($setting['description']) > 2) {
-            $template = str_replace('{WEBSITE_DESCRIPTION}', $setting['description'], $template);
+            if (isset($template) && is_string($template)) {
+                $template = str_replace('{WEBSITE_DESCRIPTION}', $setting['description'], $template);
+            }
         }
 
         if (!empty($setting['keywords']) && strlen($setting['keywords']) > 2) {
-            $template = str_replace('{WEBSITE_KEYWORDS}', $setting['keywords'], $template);
+            if (isset($template) && is_string($template)) {
+                $template = str_replace('{WEBSITE_KEYWORDS}', $setting['keywords'], $template);
+            }
         }
     }
 
@@ -408,9 +429,11 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
 
     /**
      * Prüft ob die .htaccess alle erforderlichen Regeln enthält.
-     * Kein Caching – liest die Datei bei jedem Aufruf neu um Probleme mit
-     * PHP-FPM/OPcache zu vermeiden wo statische Properties zwischen Requests
-     * im selben Worker erhalten bleiben können.
+     * Ergebnis wird request-weit gecacht ($htaccessValidCache): PHP verwirft
+     * static Properties am Requestende (klassische SAPIs), daher wirken
+     * Änderungen per FTP sofort beim nächsten Seitenaufruf. Innerhalb eines
+     * Requests verhindert der Cache redundante file_get_contents()-Aufrufe
+     * (moziloCMS ruft Plugin-Methoden mehrfach auf).
      *
      * Geprüft wird:
      *  1. Sitemap-Regel:    RewriteRule ^sitemap\.xml$ index.php [L,QSA]
@@ -424,19 +447,22 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
      *  - Catch-All fehlt/auskommentiert         → false (Plugin deaktiviert sich)
      */
     private static function isHtaccessValid(): bool {
+        if (self::$htaccessValidCache !== null) {
+            return self::$htaccessValidCache;
+        }
         if (!defined('BASE_DIR')) {
-            return true;
+            return self::$htaccessValidCache = true;
         }
         $htaccess = BASE_DIR . '.htaccess';
         if (!file_exists($htaccess)) {
-            return false;
+            return self::$htaccessValidCache = false;
         }
         $content = file_get_contents($htaccess);
         if ($content === false) {
-            return true;
+            return self::$htaccessValidCache = true;
         }
         $rules = self::parseHtaccessRules($content);
-        return $rules['hasSitemap'] && $rules['hasCatchAll'];
+        return self::$htaccessValidCache = $rules['hasSitemap'] && $rules['hasCatchAll'];
     }
 
     /**
@@ -608,6 +634,8 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
                 $_GET['page'] = isset(self::$pageBySlug[self::$catToSlug[$rawCat]][$pageSlug])
                     ? self::$pageBySlug[self::$catToSlug[$rawCat]][$pageSlug]
                     : $rawPage;
+            } elseif ($rawPage !== null) {
+                $_GET['page'] = $rawPage; // Fallback: Raw-Page-Name durchreichen
             }
         }
     }
@@ -665,50 +693,50 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     // Output-Buffer Callback
     // -----------------------------------------------------------------------
 
-    /**
-     * Wird als ob_start()-Callback aufgerufen – muss public static bleiben.
-     */
-    public static function rewriteOutput($html) {
+    private static function rewriteOutput(string $html): string {
         $html = preg_replace_callback(
             '/(href|action)=(["\'])(?!https?:\/\/|\/\/|mailto:|tel:|javascript:|data:)([^"\'#?]+(?:\.html|\/))(\\?[^"\'#]*)?(\#[^"\']*)?\2/i',
-            array('_seo_urls', 'rewriteCallback'),
+            [self::class, 'rewriteCallback'],
             $html
         );
 
-        return self::rewriteCanonical($html);
+        return self::rewriteCanonical($html ?? '');
     }
 
     /**
      * Korrigiert den <link rel="canonical">-Tag im HTML-Output.
+     * stripos()-Vorcheck spart den Regex wenn kein canonical-Tag im Output ist.
+     * Limit 1 macht explizit dass pro Seite genau ein Canonical-Tag erwartet wird.
      */
     private static function rewriteCanonical(string $html): string {
         if (self::$resolvedCanonicalPath === null) {
+            return $html;
+        }
+        if (stripos($html, 'canonical') === false) {
             return $html;
         }
         $origin = self::getSafeOrigin();
         if ($origin === '') {
             return $html;
         }
-        $base          = defined('URL_BASE') ? rtrim(URL_BASE, '/') : '';
-        $canonicalHref = $origin . $base . self::$resolvedCanonicalPath;
+        $base         = defined('URL_BASE') ? rtrim(URL_BASE, '/') : '';
+        $canonicalUrl = $origin . $base . self::$resolvedCanonicalPath;
 
         return preg_replace_callback(
-            '/<link\b[^>]*\brel=["\']canonical["\'][^>]*>/i',
-            function ($m) use ($canonicalHref) {
-                return preg_replace(
-                    '/\bhref=["\'][^"\']*["\']/',
-                    'href="' . $canonicalHref . '"',
-                    $m[0]
-                );
+            '~<link\b[^>]*\brel=["\']canonical["\'][^>]*>~i',
+            static function () use ($canonicalUrl): string {
+                return '<link rel="canonical" href="' .
+                    htmlspecialchars($canonicalUrl, ENT_QUOTES, 'UTF-8') .
+                    '">';
             },
-            $html
+            $html,
+            1
         );
     }
 
     /**
-     * Wird als preg_replace_callback-Callback aufgerufen – muss public static bleiben.
      */
-    public static function rewriteCallback($m) {
+    private static function rewriteCallback(array $m): string {
         $attr      = $m[1];
         $quote     = $m[2];
         $origPath  = $m[3];
@@ -762,46 +790,31 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     // Slug-Generator
     // -----------------------------------------------------------------------
 
-    public static function slugify($text) {
-        static $map = array(
-            // Deutsche Umlaute und ß.
-            // Großvarianten (Ä, Ö, Ü) nicht nötig – mb_strtolower() läuft zuerst.
-            // ß ist von mb_strtolower() unberührt und wird korrekt zu 'ss'.
-            'ä' => 'ae',
-            'ö' => 'oe',
-            'ü' => 'ue',
-            'ß' => 'ss',
-            // Romanische Akzente (Kleinbuchstaben – Großvarianten nach lowercase abgedeckt)
-            'é' => 'e',
-            'è' => 'e',
-            'ê' => 'e',
-            'ë' => 'e',
-            'á' => 'a',
-            'à' => 'a',
-            'â' => 'a',
-            'ã' => 'a',
-            'ó' => 'o',
-            'ò' => 'o',
-            'ô' => 'o',
-            'õ' => 'o',
-            'ú' => 'u',
-            'ù' => 'u',
-            'û' => 'u',
-            'í' => 'i',
-            'ì' => 'i',
-            'î' => 'i',
-            'ñ' => 'n',
-            'ç' => 'c',
-        );
-
-        // Erst lowercase, dann transliterieren: Großakzente (É, À, …) werden
-        // durch mb_strtolower() zu é, à, … und sind dann in der Map enthalten.
-        $text = mb_strtolower($text, 'UTF-8');
-        $text = str_replace(array_keys($map), array_values($map), $text);
+    public static function slugify(string $text): string {
+        // 1. Sicheres Lowercase (mit Fallback, falls mbstring fehlt)
+        $text = function_exists('mb_strtolower')
+            ? mb_strtolower($text, 'UTF-8')
+            : strtolower($text);
+        // 2. Deutsche Umlaute und ß vorab sichern (bevor iconv greift)
+        //    iconv würde sonst ä -> a statt ae, ß -> b statt ss machen.
+        $germanMap = ['ä' => 'ae', 'ö' => 'oe', 'ü' => 'ue', 'ß' => 'ss'];
+        $text = str_replace(array_keys($germanMap), array_values($germanMap), $text);
+        // 3. iconv-Trick für alle anderen romanischen Akzente (é -> e, ñ -> n, ç -> c).
+        //    Kein intl nötig; läuft auf Standard-PHP. IGNORE verhindert Abbruch bei
+        //    nicht-konvertierbaren Zeichen. Auf Linux/IONOS (Produktion) liefert iconv
+        //    é -> e direkt – der Strip ist dort ein No-op. Auf Windows (Laragon/Entwicklung)
+        //    gibt libiconv Akzente als Präfix-Zeichen aus (é -> 'e, è -> `e, ê -> ^e) –
+        //    der Strip entfernt diese Artefakte und ist primär für Windows relevant.
+        if (function_exists('iconv')) {
+            $converted = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $text);
+            if ($converted !== false) {
+                $text = str_replace(["'", '`', '^', '~', '"'], '', $converted);
+            }
+        }
+        // 4. Bereinigung: Alles außer a-z und 0-9 zu Bindestrichen
         $text = preg_replace('/[^a-z0-9]+/', '-', $text);
         $text = trim($text, '-');
-
-        return $text ? $text : 'seite';
+        return $text ?: 'seite';
     }
 
     // -----------------------------------------------------------------------
