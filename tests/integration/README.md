@@ -1,96 +1,13 @@
-# seo_urls – Integrationstests
+# seo_urls – Integrationstests (PHPUnit)
 
-Manuelle HTTP-Tests gegen eine laufende moziloCMS-Instanz mit aktiviertem `seo_urls`-Plugin.
+HTTP-Tests gegen eine laufende moziloCMS-Instanz mit aktiviertem `seo_urls`-Plugin.
 
----
-
-## Alternative A – VS Code REST Client
-
-### Voraussetzung: VS Code Extension installieren
-
-**REST Client** von Huachao Mao (`humao.rest-client`)
-
-Installation über den VS Code Marketplace:
-```
-Erweiterungen (Strg+Shift+X) → "REST Client" suchen → Installieren
-```
-
-Oder direkt über die Kommandozeile:
-```
-code --install-extension humao.rest-client
-```
-
-### Wichtige Einstellung: Redirects nicht automatisch folgen
-
-Der REST Client folgt Redirects standardmäßig – die 301-Testfälle (2 und 3) sind
-dann nicht direkt sichtbar. Einstellung deaktivieren:
-
-**Ctrl+Shift+P → "Preferences: Open Settings (JSON)"** – folgenden Eintrag ergänzen:
-
-```json
-"rest-client.followredirect": false
-```
-
-Danach zeigt REST Client den `301`-Status und den `Location`-Header direkt an.
-
-### Einrichtung
-
-1. `seo_urls.http.example` nach `seo_urls.http` kopieren:
-   ```
-   cp seo_urls.http.example seo_urls.http
-   ```
-
-2. `@baseUrl` in `seo_urls.http` auf die eigene Testinstanz anpassen:
-   ```
-   @baseUrl = http://deine-testinstanz.de
-   ```
-
-3. Testfälle mit projektspezifischen Slug-URLs anpassen
-   (Kategorie- und Seitennamen der eigenen Installation eintragen).
-
-> **Hinweis:** `seo_urls.http` ist in `.gitignore` eingetragen und wird nicht gepusht –
-> jede Entwicklungsumgebung pflegt ihre eigene lokale Konfiguration.
-
-### Tests ausführen
-
-`.http`-Datei in VS Code öffnen → über jedem Request erscheint **"Send Request"** → anklicken →
-Response öffnet sich in einem geteilten Fenster.
-
-### Assertions
-
-Jeder Testfall enthält JavaScript-Assertions, die automatisch nach dem Request ausgeführt werden.
-Ergebnisse erscheinen im **"Test Results"**-Panel von VS Code (unterhalb des Response-Panels).
-
-Ein grüner Haken bedeutet: Assertion bestanden. Ein rotes Kreuz zeigt den fehlgeschlagenen
-Test mit Fehlermeldung.
-
-### Bekanntes Problem: Test Results Reiter
-
-Der „Test Results"-Reiter im Response-Panel erscheint nicht immer zuverlässig. Bekannte Symptome:
-
-- Nach **Developer: Reload Window** verschwindet der Reiter
-- `TypeError: terminated` in der Developer Console (Verbindungsabbruch vor Assertion-Auswertung)
-- Reiter nur nach bestimmten Aktionen sichtbar
-
-**Workaround:** Response manuell im „Response"-Panel prüfen.
-Die Assertions sind korrekt dokumentiert und dienen als Referenz für das erwartete Verhalten –
-auch wenn der Reiter nicht erscheint.
-
-> **Hinweis:** Die PHPUnit-Variante (Alternative B) ist zuverlässiger und empfohlen.
-
----
-
-## Alternative B – PHPUnit (empfohlen)
-
-Strukturierte Integrationstests mit automatischer Pass/Fail-Ausgabe und
-vollständiger Toolchain-Integration (CI, IDE-Test-Explorer).
-
-### Voraussetzung
+## Voraussetzung
 
 - PHP mit aktivierter `curl`-Extension
 - PHPUnit installiert (`vendor/bin/phpunit` im Projektverzeichnis)
 
-### Einrichtung
+## Einrichtung
 
 1. `SeoUrlsIntegrationTest.php.example` nach `SeoUrlsIntegrationTest.php` kopieren:
    ```
@@ -108,7 +25,7 @@ vollständiger Toolchain-Integration (CI, IDE-Test-Explorer).
 > **Hinweis:** `SeoUrlsIntegrationTest.php` ist in `.gitignore` eingetragen und wird nicht gepusht –
 > jede Entwicklungsumgebung pflegt ihre eigene lokale Konfiguration.
 
-### Tests ausführen
+## Tests ausführen
 
 Nur Integrationstests (Testserver muss erreichbar sein):
 ```
@@ -120,7 +37,10 @@ Oder direkt per Verzeichnis:
 php vendor/bin/phpunit tests/integration/
 ```
 
----
+Oder per Group-Filter:
+```
+php vendor/bin/phpunit --group integration
+```
 
 ## Testfälle
 
