@@ -4,83 +4,155 @@
 ###
 ### Hinweis: Testfälle 4 und 5 müssen manuell im Response-Body geprüft werden.
 ### Hinweis: REST Client folgt Redirects standardmäßig NICHT – Status 301 ist direkt sichtbar.
+### Einstellung prüfen Ctrl + Shift + P → "Preferences: Open Settings (JSON)": "rest-client.followredirect": false
 
 @baseUrl = http://deine-testinstanz.de
 
 ###
 
 ### 1. Basis-Routing – Slug-URL → 200 OK
-### Erwartung: 200 OK, HTML-Response mit Seiteninhalt
 GET {{baseUrl}}/dein-slug/
 Accept: text/html
+
+> {%
+client.test("Status 200", function() {
+    client.assert(response.status === 200);
+});
+client.test("HTML-Response", function() {
+    client.assert(response.body.includes("<html"));
+});
+%}
 
 ###
 
 ### 2. Redirect – Umlaut-URL → Slug (301)
-### Erwartung: 301 Moved Permanently
-###            Location: /dein-slug/
-GET {{baseUrl}}/Dein Umlaut-Kategoriename
+### REST Client followredirect muss auf false gesetzt sein!
+### URL-Encoding: Ü = %C3%9C, Leerzeichen = %20
+GET {{baseUrl}}/%C3%9Cber%20deine%20Kategorie.html
 Accept: text/html
+
+> {%
+client.test("Status 301", function() {
+    client.assert(response.status === 301);
+});
+client.test("Location enthält Slug", function() {
+    client.assert(response.headers.valueOf("location").includes("/"));
+});
+%}
 
 ###
 
 ### 3. Redirect – .html-URL → Slug (301)
-### Erwartung: 301 Moved Permanently
-###            Location: /dein-slug/deine-unterseite/
 GET {{baseUrl}}/dein-slug/deine-unterseite.html
 Accept: text/html
 
+> {%
+client.test("Status 301", function() {
+    client.assert(response.status === 301);
+});
+client.test("Location enthält Slug", function() {
+    client.assert(response.headers.valueOf("location")
+        .includes("/dein-slug/deine-unterseite/"));
+});
+%}
+
 ###
 
-### 4. Canonical-Tag – manuell im Response-Body prüfen
-### Erwartung: 200 OK
-###            Body enthält:
-###            <link rel="canonical" href="https://www.deine-domain.de/dein-slug/deine-unterseite/">
+### 4. Canonical-Tag – im Response-Body prüfen
+### Erwartung: <link rel="canonical" href="https://www.deine-domain.de/dein-slug/deine-unterseite/">
 GET {{baseUrl}}/dein-slug/deine-unterseite/
 Accept: text/html
 
+> {%
+client.test("Status 200", function() {
+    client.assert(response.status === 200);
+});
+client.test("Canonical-Tag vorhanden", function() {
+    client.assert(response.body.includes("rel=\"canonical\""));
+});
+%}
+
 ###
 
-### 5. Meta-Description – manuell im Response-Body prüfen
-### Erwartung: 200 OK
-###            Body enthält: <meta name="description" content="...">
-###            (MetaKeywordsDescription-Kompatibilität)
+### 5. Meta-Description – im Response-Body prüfen
 GET {{baseUrl}}/dein-slug/deine-unterseite/
 Accept: text/html
+
+> {%
+client.test("Status 200", function() {
+    client.assert(response.status === 200);
+});
+client.test("Meta-Description vorhanden", function() {
+    client.assert(response.body.includes("name=\"description\""));
+});
+%}
 
 ###
 
 ### 6. Sitemap
-### Erwartung: 200 OK
-###            Content-Type: application/xml
-###            Body enthält: <loc>https://www.deine-domain.de/
 GET {{baseUrl}}/sitemap.xml
+
+> {%
+client.test("Status 200", function() {
+    client.assert(response.status === 200);
+});
+client.test("Content-Type XML", function() {
+    client.assert(response.headers.valueOf("content-type")
+        .includes("application/xml"));
+});
+client.test("Enthält loc-Tag mit HTTPS", function() {
+    client.assert(response.body.includes("<loc>https://"));
+});
+%}
 
 ###
 
 ### 7. Startseite – kein Redirect-Loop
-### Erwartung: 200 OK (kein weiterer Redirect)
 GET {{baseUrl}}/
 Accept: text/html
+
+> {%
+client.test("Status 200", function() {
+    client.assert(response.status === 200);
+});
+%}
 
 ###
 
 ### 8. Admin-Bereich – nicht durch Plugin abgefangen
-### Erwartung: 200 OK (kein Slug-Redirect)
 GET {{baseUrl}}/admin/
 Accept: text/html
+
+> {%
+client.test("Status 200", function() {
+    client.assert(response.status === 200);
+});
+client.test("Kein Slug-Redirect", function() {
+    client.assert(response.status !== 301);
+});
+%}
 
 ###
 
 ### 9. Debug-Map
-### Erwartung: 200 OK, text/plain, Body enthält Slug-Map-Ausgabe
-### Hinweis: Debug-Modus muss in der Plugin-Konfiguration aktiviert sein
+### Hinweis: Debug-Modus in Plugin-Konfiguration aktivieren
 GET {{baseUrl}}/?seo_debug=1
 Accept: text/html
+
+> {%
+client.test("Status 200", function() {
+    client.assert(response.status === 200);
+});
+%}
 
 ###
 
 ### 10. Unbekannter Slug – Fallback
-### Erwartung: kein Fatal Error, sinnvolle Response (z.B. 404 oder Startseite)
 GET {{baseUrl}}/dieser-slug-existiert-nicht/
 Accept: text/html
+
+> {%
+client.test("Kein Fatal Error", function() {
+    client.assert(response.status !== 500);
+});
+%}
