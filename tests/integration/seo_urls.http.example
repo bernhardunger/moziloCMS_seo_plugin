@@ -1,0 +1,86 @@
+### seo_urls – Integrationstests (VS Code REST Client)
+### Kopiere diese Datei nach seo_urls.http und passe @baseUrl an.
+### Extension: humao.rest-client  (Marketplace: "REST Client")
+###
+### Hinweis: Testfälle 4 und 5 müssen manuell im Response-Body geprüft werden.
+### Hinweis: REST Client folgt Redirects standardmäßig NICHT – Status 301 ist direkt sichtbar.
+
+@baseUrl = http://deine-testinstanz.de
+
+###
+
+### 1. Basis-Routing – Slug-URL → 200 OK
+### Erwartung: 200 OK, HTML-Response mit Seiteninhalt
+GET {{baseUrl}}/dein-slug/
+Accept: text/html
+
+###
+
+### 2. Redirect – Umlaut-URL → Slug (301)
+### Erwartung: 301 Moved Permanently
+###            Location: /dein-slug/
+GET {{baseUrl}}/Dein Umlaut-Kategoriename
+Accept: text/html
+
+###
+
+### 3. Redirect – .html-URL → Slug (301)
+### Erwartung: 301 Moved Permanently
+###            Location: /dein-slug/deine-unterseite/
+GET {{baseUrl}}/dein-slug/deine-unterseite.html
+Accept: text/html
+
+###
+
+### 4. Canonical-Tag – manuell im Response-Body prüfen
+### Erwartung: 200 OK
+###            Body enthält:
+###            <link rel="canonical" href="https://www.deine-domain.de/dein-slug/deine-unterseite/">
+GET {{baseUrl}}/dein-slug/deine-unterseite/
+Accept: text/html
+
+###
+
+### 5. Meta-Description – manuell im Response-Body prüfen
+### Erwartung: 200 OK
+###            Body enthält: <meta name="description" content="...">
+###            (MetaKeywordsDescription-Kompatibilität)
+GET {{baseUrl}}/dein-slug/deine-unterseite/
+Accept: text/html
+
+###
+
+### 6. Sitemap
+### Erwartung: 200 OK
+###            Content-Type: application/xml
+###            Body enthält: <loc>https://www.deine-domain.de/
+GET {{baseUrl}}/sitemap.xml
+
+###
+
+### 7. Startseite – kein Redirect-Loop
+### Erwartung: 200 OK (kein weiterer Redirect)
+GET {{baseUrl}}/
+Accept: text/html
+
+###
+
+### 8. Admin-Bereich – nicht durch Plugin abgefangen
+### Erwartung: 200 OK (kein Slug-Redirect)
+GET {{baseUrl}}/admin/
+Accept: text/html
+
+###
+
+### 9. Debug-Map
+### Erwartung: 200 OK, text/plain, Body enthält Slug-Map-Ausgabe
+### Hinweis: Debug-Modus muss in der Plugin-Konfiguration aktiviert sein
+GET {{baseUrl}}/?seo_debug=1
+Accept: text/html
+
+###
+
+### 10. Unbekannter Slug – Fallback
+### Erwartung: kein Fatal Error, sinnvolle Response (z.B. 404 oder Startseite)
+GET {{baseUrl}}/dieser-slug-existiert-nicht/
+Accept: text/html
