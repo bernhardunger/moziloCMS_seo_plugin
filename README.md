@@ -106,13 +106,9 @@ RewriteRule ^(.*)$ index.php [QSA,L]
 Options -Indexes
 RewriteEngine On
 RewriteBase /
-# 1. SCHUTZ VOR HOST-SPOOFING & HTTPS/WWW-ZWANG
-# Wenn der Host NICHT exakt deine Domain ist OR HTTPS aus ist...
 # !Domain-Namen anpassen!
 RewriteCond %{HTTP_HOST} !^www\.deine-domain\.de$ [NC,OR]
 RewriteCond %{HTTPS} off
-# ...dann jage ALLES sofort auf die korrekte, sichere URL.
-# Das wäscht jeden gefälschten Host-Header sauber, bevor er mozilo erreicht.
 RewriteRule ^(.*)$ https://www.deine-domain.de/$1 [L,R=301]
 # mozilo generated - not change from here to mozilo_end
 RewriteRule ^(.*)/mod_rewrite_t_e_s_t\.html$ $1/index\.php?moderewrite=ok [L]
