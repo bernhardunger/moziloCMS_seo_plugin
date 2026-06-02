@@ -1,0 +1,148 @@
+<?php
+
+declare(strict_types=1);
+
+use PHPUnit\Framework\TestCase;
+
+/**
+ * Integrationstests für das seo_urls Plugin.
+ *
+ * Kopiere diese Datei nach SeoUrlsIntegrationTest.php und passe BASE_URL
+ * sowie die projektspezifischen Slug-URLs an deine Testinstanz an.
+ *
+ * Voraussetzung: PHP curl-Extension verfügbar.
+ * Ausführen: php vendor/bin/phpunit tests/integration/
+ */
+class SeoUrlsIntegrationTest extends TestCase
+{
+    private const BASE_URL = 'http://deine-testinstanz.de';
+
+    private function makeRequest(string $url, bool $followRedirects = true): array
+    {
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HEADER, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, $followRedirects);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+
+        $response = (string) curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $headerSize = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+        curl_close($ch);
+
+        $allHeaders = substr($response, 0, $headerSize);
+        $body = substr($response, $headerSize);
+
+        // Bei Redirects fügt curl alle Header-Blöcke zusammen – letzten Block nehmen.
+        $blocks = preg_split('/\r\n\r\n|\n\n/', rtrim($allHeaders));
+        $lastBlock = (string) end($blocks);
+
+        $headers = [];
+        foreach (explode("\r\n", $lastBlock) as $line) {
+            if (str_contains($line, ':')) {
+                [$name, $value] = explode(':', $line, 2);
+                $headers[strtolower(trim($name))] = trim($value);
+            }
+        }
+
+        return ['status' => $httpCode, 'headers' => $headers, 'body' => $body];
+    }
+
+    private function getHeader(array $headers, string $name): ?string
+    {
+        return $headers[strtolower($name)] ?? null;
+    }
+
+    public function testBasisRoutingSlugUrl(): void
+    {
+        $result = $this->makeRequest(self::BASE_URL . '/dein-slug/');
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString('<html', $result['body']);
+    }
+
+    public function testRedirectUmlautUrl(): void
+    {
+        // URL-Encoding: Ü = %C3%9C, Leerzeichen = %20
+        $result = $this->makeRequest(
+            self::BASE_URL . '/%C3%9Cber%20deine%20Kategorie',
+            false
+        );
+
+        $this->assertSame(301, $result['status']);
+        $this->assertStringContainsString(
+            '/',
+            (string) $this->getHeader($result['headers'], 'location')
+        );
+    }
+
+    public function testRedirectHtmlUrl(): void
+    {
+        $result = $this->makeRequest(
+            self::BASE_URL . '/dein-slug/deine-unterseite.html',
+            false
+        );
+
+        $this->assertSame(301, $result['status']);
+        $this->assertStringContainsString(
+            '/dein-slug/deine-unterseite/',
+            (string) $this->getHeader($result['headers'], 'location')
+        );
+    }
+
+    public function testCanonicalTag(): void
+    {
+        $result = $this->makeRequest(self::BASE_URL . '/dein-slug/deine-unterseite/');
+
+        $this->assertStringContainsString('rel="canonical"', $result['body']);
+    }
+
+    public function testMetaDescription(): void
+    {
+        $result = $this->makeRequest(self::BASE_URL . '/dein-slug/deine-unterseite/');
+
+        $this->assertStringContainsString('name="description"', $result['body']);
+    }
+
+    public function testSitemap(): void
+    {
+        $result = $this->makeRequest(self::BASE_URL . '/sitemap.xml');
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString(
+            'application/xml',
+            (string) $this->getHeader($result['headers'], 'content-type')
+        );
+        $this->assertStringContainsString('<loc>https://', $result['body']);
+    }
+
+    public function testStartseiteKeinRedirectLoop(): void
+    {
+        $result = $this->makeRequest(self::BASE_URL . '/');
+
+        $this->assertSame(200, $result['status']);
+    }
+
+    public function testAdminBereichNichtAbgefangen(): void
+    {
+        $result = $this->makeRequest(self::BASE_URL . '/admin/');
+
+        $this->assertSame(200, $result['status']);
+        $this->assertNotSame(301, $result['status']);
+    }
+
+    public function testDebugMap(): void
+    {
+        $result = $this->makeRequest(self::BASE_URL . '/?seo_debug=1');
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString('seo_debug', $result['body']);
+    }
+
+    public function testUnbekannterSlugKeinFatalError(): void
+    {
+        $result = $this->makeRequest(self::BASE_URL . '/dieser-slug-existiert-nicht/');
+
+        $this->assertNotSame(500, $result['status']);
+    }
+}

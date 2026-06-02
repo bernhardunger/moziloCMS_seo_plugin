@@ -1,8 +1,12 @@
-# seo_urls – Integrationstests (VS Code REST Client)
+# seo_urls – Integrationstests
 
 Manuelle HTTP-Tests gegen eine laufende moziloCMS-Instanz mit aktiviertem `seo_urls`-Plugin.
 
-## Voraussetzung: VS Code Extension installieren
+---
+
+## Alternative A – VS Code REST Client
+
+### Voraussetzung: VS Code Extension installieren
 
 **REST Client** von Huachao Mao (`humao.rest-client`)
 
@@ -16,7 +20,7 @@ Oder direkt über die Kommandozeile:
 code --install-extension humao.rest-client
 ```
 
-## Wichtige Einstellung: Redirects nicht automatisch folgen
+### Wichtige Einstellung: Redirects nicht automatisch folgen
 
 Der REST Client folgt Redirects standardmäßig – die 301-Testfälle (2 und 3) sind
 dann nicht direkt sichtbar. Einstellung deaktivieren:
@@ -29,7 +33,7 @@ dann nicht direkt sichtbar. Einstellung deaktivieren:
 
 Danach zeigt REST Client den `301`-Status und den `Location`-Header direkt an.
 
-## Einrichtung
+### Einrichtung
 
 1. `seo_urls.http.example` nach `seo_urls.http` kopieren:
    ```
@@ -47,12 +51,12 @@ Danach zeigt REST Client den `301`-Status und den `Location`-Header direkt an.
 > **Hinweis:** `seo_urls.http` ist in `.gitignore` eingetragen und wird nicht gepusht –
 > jede Entwicklungsumgebung pflegt ihre eigene lokale Konfiguration.
 
-## Tests ausführen
+### Tests ausführen
 
 `.http`-Datei in VS Code öffnen → über jedem Request erscheint **"Send Request"** → anklicken →
 Response öffnet sich in einem geteilten Fenster.
 
-## Assertions
+### Assertions
 
 Jeder Testfall enthält JavaScript-Assertions, die automatisch nach dem Request ausgeführt werden.
 Ergebnisse erscheinen im **"Test Results"**-Panel von VS Code (unterhalb des Response-Panels).
@@ -60,7 +64,7 @@ Ergebnisse erscheinen im **"Test Results"**-Panel von VS Code (unterhalb des Res
 Ein grüner Haken bedeutet: Assertion bestanden. Ein rotes Kreuz zeigt den fehlgeschlagenen
 Test mit Fehlermeldung.
 
-## Bekanntes Problem: Test Results Reiter
+### Bekanntes Problem: Test Results Reiter
 
 Der „Test Results"-Reiter im Response-Panel erscheint nicht immer zuverlässig. Bekannte Symptome:
 
@@ -71,6 +75,52 @@ Der „Test Results"-Reiter im Response-Panel erscheint nicht immer zuverlässig
 **Workaround:** Response manuell im „Response"-Panel prüfen.
 Die Assertions sind korrekt dokumentiert und dienen als Referenz für das erwartete Verhalten –
 auch wenn der Reiter nicht erscheint.
+
+> **Hinweis:** Die PHPUnit-Variante (Alternative B) ist zuverlässiger und empfohlen.
+
+---
+
+## Alternative B – PHPUnit (empfohlen)
+
+Strukturierte Integrationstests mit automatischer Pass/Fail-Ausgabe und
+vollständiger Toolchain-Integration (CI, IDE-Test-Explorer).
+
+### Voraussetzung
+
+- PHP mit aktivierter `curl`-Extension
+- PHPUnit installiert (`vendor/bin/phpunit` im Projektverzeichnis)
+
+### Einrichtung
+
+1. `SeoUrlsIntegrationTest.php.example` nach `SeoUrlsIntegrationTest.php` kopieren:
+   ```
+   cp tests/integration/SeoUrlsIntegrationTest.php.example tests/integration/SeoUrlsIntegrationTest.php
+   ```
+
+2. `BASE_URL` in `SeoUrlsIntegrationTest.php` auf die eigene Testinstanz anpassen:
+   ```php
+   private const BASE_URL = 'http://deine-testinstanz.de';
+   ```
+
+3. Projektspezifische Slug-URLs in den einzelnen Testmethoden anpassen
+   (z.B. `/dein-slug/` durch echte Kategorienamen ersetzen).
+
+> **Hinweis:** `SeoUrlsIntegrationTest.php` ist in `.gitignore` eingetragen und wird nicht gepusht –
+> jede Entwicklungsumgebung pflegt ihre eigene lokale Konfiguration.
+
+### Tests ausführen
+
+Nur Integrationstests (Testserver muss erreichbar sein):
+```
+php vendor/bin/phpunit --testsuite Integration
+```
+
+Oder direkt per Verzeichnis:
+```
+php vendor/bin/phpunit tests/integration/
+```
+
+---
 
 ## Testfälle
 

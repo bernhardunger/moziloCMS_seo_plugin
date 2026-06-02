@@ -3,4 +3,5 @@ _seo_urls/seo_urls_projekt_kontext.md
 vendor/
 .phpunit.result.cache
 tests/integration/seo_urls.http
+tests/integration/SeoUrlsIntegrationTest.php
 
