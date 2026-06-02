@@ -79,11 +79,14 @@ Options -Indexes
 RewriteEngine On
 # Oder auch das Verzeichnis je nach Server-Einstellungen
 RewriteBase /
-# HTTPS und WWW erzwingen 
-RewriteCond %{HTTPS} off [OR]
-RewriteCond %{HTTP_HOST} !^www\. [NC]
+# 1. SCHUTZ VOR HOST-SPOOFING & HTTPS/WWW-ZWANG
+# Wenn der Host NICHT exakt deine Domain ist OR HTTPS aus ist...
 # !Domain-Namen anpassen!
-RewriteRule ^(.*)$ https://www.meine-domain.de/$1 [L,R=301]
+RewriteCond %{HTTP_HOST} !^www\.deine-domain\.de$ [NC,OR]
+RewriteCond %{HTTPS} off
+# ...dann jage ALLES sofort auf die korrekte, sichere URL.
+# Das wäscht jeden gefälschten Host-Header sauber, bevor er mozilo erreicht.
+RewriteRule ^(.*)$ https://www.deine-domain.de/$1 [L,R=301]
 # mozilo generated - not change from here to mozilo_end
 RewriteRule ^(.*)/mod_rewrite_t_e_s_t\.html$ $1/index\.php?moderewrite=ok [L]
 # .html-URLs an moziloCMS übergeben (Kompatibilität mit alten Links)
@@ -103,10 +106,14 @@ RewriteRule ^(.*)$ index.php [QSA,L]
 Options -Indexes
 RewriteEngine On
 RewriteBase /
-RewriteCond %{HTTPS} off [OR]
-RewriteCond %{HTTP_HOST} !^www\. [NC]
+# 1. SCHUTZ VOR HOST-SPOOFING & HTTPS/WWW-ZWANG
+# Wenn der Host NICHT exakt deine Domain ist OR HTTPS aus ist...
 # !Domain-Namen anpassen!
-RewriteRule ^(.*)$ https://www.meine-domain.de/$1 [L,R=301]
+RewriteCond %{HTTP_HOST} !^www\.deine-domain\.de$ [NC,OR]
+RewriteCond %{HTTPS} off
+# ...dann jage ALLES sofort auf die korrekte, sichere URL.
+# Das wäscht jeden gefälschten Host-Header sauber, bevor er mozilo erreicht.
+RewriteRule ^(.*)$ https://www.deine-domain.de/$1 [L,R=301]
 # mozilo generated - not change from here to mozilo_end
 RewriteRule ^(.*)/mod_rewrite_t_e_s_t\.html$ $1/index\.php?moderewrite=ok [L]
 RewriteRule \.html$ index\.php [QSA,L]
