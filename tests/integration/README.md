@@ -60,6 +60,18 @@ Ergebnisse erscheinen im **"Test Results"**-Panel von VS Code (unterhalb des Res
 Ein grüner Haken bedeutet: Assertion bestanden. Ein rotes Kreuz zeigt den fehlgeschlagenen
 Test mit Fehlermeldung.
 
+## Bekanntes Problem: Test Results Reiter
+
+Der „Test Results"-Reiter im Response-Panel erscheint nicht immer zuverlässig. Bekannte Symptome:
+
+- Nach **Developer: Reload Window** verschwindet der Reiter
+- `TypeError: terminated` in der Developer Console (Verbindungsabbruch vor Assertion-Auswertung)
+- Reiter nur nach bestimmten Aktionen sichtbar
+
+**Workaround:** Response manuell im „Response"-Panel prüfen.
+Die Assertions sind korrekt dokumentiert und dienen als Referenz für das erwartete Verhalten –
+auch wenn der Reiter nicht erscheint.
+
 ## Testfälle
 
 | # | Beschreibung | Erwartetes Ergebnis |

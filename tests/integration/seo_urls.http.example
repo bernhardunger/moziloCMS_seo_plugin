@@ -5,6 +5,11 @@
 ### Hinweis: Testfälle 4 und 5 müssen manuell im Response-Body geprüft werden.
 ### Hinweis: REST Client folgt Redirects standardmäßig NICHT – Status 301 ist direkt sichtbar.
 ### Einstellung prüfen Ctrl + Shift + P → "Preferences: Open Settings (JSON)": "rest-client.followredirect": false
+###
+### Hinweis: Der "Test Results" Reiter im VS Code REST Client ist
+### etwas "quirky" – er erscheint nicht immer zuverlässig nach
+### "Send Request". Response manuell im Response-Panel prüfen.
+### Siehe README.md für Details.
 
 @baseUrl = http://deine-testinstanz.de
 
