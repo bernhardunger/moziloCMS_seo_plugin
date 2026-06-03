@@ -1161,7 +1161,14 @@ class SeoUrlsTest extends TestCase {
     }
 
     /**
-     * Serialisiertes Objekt → null (allowed_classes => false verhindert Instanziierung).
+     * Array-Blob mit eingebettetem Objekt → null (Key-not-found nach allowed_classes-Schutz).
+     *
+     * serialize(['k' => new \stdClass()]) = 'a:1:{s:1:"k";O:8:"stdClass":0:{}}'
+     * – beginnt mit 'a:' → strpos-Guard passiert
+     * – unserialize() mit allowed_classes => false → äußeres Array, inneres Objekt
+     *   wird zu __PHP_Incomplete_Class (kein Fatal, keine Exception)
+     * – is_array($conf) = true (Array-Wrapper bleibt erhalten)
+     * – Key-Lookup schlägt fehl → null
      */
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
@@ -1169,8 +1176,9 @@ class SeoUrlsTest extends TestCase {
         $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
         $confDir = $tmpBase . 'plugins' . DIRECTORY_SEPARATOR . 'MetaKeywordsDescription' . DIRECTORY_SEPARATOR;
         mkdir($confDir, 0777, true);
-        // Serialisiertes Objekt statt Array – soll abgewiesen werden
-        $blob = serialize(new \stdClass());
+        // Array-Blob mit eingebettetem Objekt – starts with 'a:', passiert strpos-Guard;
+        // allowed_classes => false verhindert Klassen-Instanziierung (→ __PHP_Incomplete_Class)
+        $blob = serialize(['k' => new \stdClass()]);
         file_put_contents($confDir . 'plugin.conf.php', "<?php die();\n" . $blob);
         define('BASE_DIR', $tmpBase);
 
@@ -1178,7 +1186,36 @@ class SeoUrlsTest extends TestCase {
         $result = Seo_Urls_MetaConfig::lookup('Kontakt', 'Impressum');
         restore_error_handler();
 
-        $this->assertNull($result, 'Serialisiertes Objekt → null (is_array-Guard)');
+        $this->assertNull($result, 'Array-Blob mit eingebettetem Objekt → null (Key-not-found nach allowed_classes-Schutz)');
+
+        unlink($confDir . 'plugin.conf.php');
+        rmdir($confDir);
+        rmdir($tmpBase . 'plugins');
+        rmdir($tmpBase);
+    }
+
+    /**
+     * Reines Objekt-Blob ohne Array-Wrapper → null (strpos-Guard).
+     *
+     * serialize(new \stdClass()) = 'O:8:"stdClass":0:{}'
+     * – enthält kein 'a:' → strpos($raw, 'a:') = false
+     * – lookup() gibt null zurück am "unbekanntes Format"-Guard
+     * – unserialize() wird nie aufgerufen
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testMetaConfigLookupReinesObjektImBlob(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        $confDir = $tmpBase . 'plugins' . DIRECTORY_SEPARATOR . 'MetaKeywordsDescription' . DIRECTORY_SEPARATOR;
+        mkdir($confDir, 0777, true);
+        // Reines Objekt-Blob: 'O:8:"stdClass":0:{}' enthält kein 'a:' → strpos-Guard
+        $blob = serialize(new \stdClass());
+        file_put_contents($confDir . 'plugin.conf.php', "<?php die();\n" . $blob);
+        define('BASE_DIR', $tmpBase);
+
+        $result = Seo_Urls_MetaConfig::lookup('Kontakt', 'Impressum');
+
+        $this->assertNull($result, 'Reines Objekt-Blob ohne a:-Prefix → null (strpos-Guard)');
 
         unlink($confDir . 'plugin.conf.php');
         rmdir($confDir);
@@ -1257,6 +1294,37 @@ class SeoUrlsTest extends TestCase {
             $result['description'],
             'description für Umlaut-Kategorie korrekt'
         );
+
+        unlink($confDir . 'plugin.conf.php');
+        rmdir($confDir);
+        rmdir($tmpBase . 'plugins');
+        rmdir($tmpBase);
+    }
+
+    /**
+     * Umlaut-Seitenname: $page wird direkt (ohne rawurlencode) in den Schlüssel eingebaut.
+     * Verifiziert die Annahme "Seite nicht URL-encoded" für moziloCMS 3.0.x.
+     * Schlüssel: '@=Kategorie:Über Uns=@' (kein rawurlencode auf dem Seitennamen).
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testMetaConfigLookupUmlautSeitenname(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        $confDir = $tmpBase . 'plugins' . DIRECTORY_SEPARATOR . 'MetaKeywordsDescription' . DIRECTORY_SEPARATOR;
+        mkdir($confDir, 0777, true);
+        copy(__DIR__ . '/fixtures/meta_plugin_conf.php', $confDir . 'plugin.conf.php');
+        define('BASE_DIR', $tmpBase);
+
+        // Seitenname URL-decoded übergeben – lookup() verwendet ihn direkt (kein rawurlencode)
+        $result = Seo_Urls_MetaConfig::lookup('Kategorie', 'Über Uns');
+
+        $this->assertIsArray($result, 'Umlaut-Seitenname → Array');
+        $this->assertSame(
+            'Beschreibung fuer Umlaut-Seitenname.',
+            $result['description'],
+            'description für Umlaut-Seitenname korrekt'
+        );
+        $this->assertSame('', $result['keywords'], 'keywords leer');
 
         unlink($confDir . 'plugin.conf.php');
         rmdir($confDir);

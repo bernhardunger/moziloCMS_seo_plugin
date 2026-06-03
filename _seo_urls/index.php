@@ -39,6 +39,10 @@ final class Seo_Urls_MetaConfig
     {
         // 1. Pfad zur plugin.conf.php aufbauen
         //    BASE_DIR . 'plugins/' analog zu bestehendem Plugin-Pfad-Muster
+        //    Analog zu isHtaccessValid(): graceful degradation außerhalb CMS-Kontext
+        if (!defined('BASE_DIR')) {
+            return null;
+        }
         $confPath = BASE_DIR . 'plugins/MetaKeywordsDescription/plugin.conf.php';
         if (!is_file($confPath) || !is_readable($confPath)) {
             return null;
@@ -65,8 +69,12 @@ final class Seo_Urls_MetaConfig
             return null;
         }
 
-        // 4. Schlüssel bilden: "@=cat:page=@"
-        //    Kategorie URL-encoded (wie vom CMS gespeichert), Seite nicht
+        // 4. Schlüssel bilden: "@=rawurlencoded-cat:page=@"
+        //    $cat: URL-decoded übergeben, rawurlencode() hier anwenden
+        //    $page: moziloCMS 3.0.x übergibt $_GET['page'] ohne URL-Encoding –
+        //           urldecode() am Aufrufer liefert identischen Wert, kein
+        //           rawurlencode() nötig. Annahme gilt für moziloCMS 3.0.x;
+        //           bei Formatänderung ist nur diese Zeile anzupassen.
         $key = '@=' . rawurlencode($cat) . ':' . $page . '=@';
         if (!isset($conf[$key]) || !is_array($conf[$key])) {
             return null;
