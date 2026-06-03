@@ -1004,14 +1004,13 @@ class SeoUrlsTest extends TestCase {
 
         global $template;
         $template = '{WEBSITE_DESCRIPTION}';
-        $_GET = ['cat' => 'Kontakt', 'page' => 'team'];
 
         $ref = new \ReflectionMethod('_seo_urls', 'applyMetaKeywordsDescription');
         $ref->setAccessible(true);
         // unserialize() emittiert E_WARNING bei korruptem Input (kein Exception).
         // Im Test unterdrücken – in Production ist das Warning im Error-Log erwünscht.
         set_error_handler(static fn() => true, E_WARNING);
-        $ref->invoke(null);
+        $ref->invoke(null, 'Kontakt', 'team');
         restore_error_handler();
 
         $this->assertSame('{WEBSITE_DESCRIPTION}', $template, 'Kein Meta-Tag bei korrupter conf');
@@ -1041,11 +1040,10 @@ class SeoUrlsTest extends TestCase {
 
         global $template;
         $template = 'VOR {WEBSITE_DESCRIPTION} NACH';
-        $_GET = ['cat' => $cat, 'page' => $page];
 
         $ref = new \ReflectionMethod('_seo_urls', 'applyMetaKeywordsDescription');
         $ref->setAccessible(true);
-        $ref->invoke(null);
+        $ref->invoke(null, $cat, $page);
 
         $this->assertSame('VOR Meine Beschreibung NACH', $template, 'Beschreibung korrekt ersetzt');
 
@@ -1073,13 +1071,192 @@ class SeoUrlsTest extends TestCase {
         define('BASE_DIR', $tmpBase);
 
         $GLOBALS['template'] = null;
-        $_GET = ['cat' => $cat, 'page' => $page];
 
         $ref = new \ReflectionMethod('_seo_urls', 'applyMetaKeywordsDescription');
         $ref->setAccessible(true);
-        $ref->invoke(null); // kein Fatal Error, kein TypeError
+        $ref->invoke(null, $cat, $page); // kein Fatal Error, kein TypeError
 
         $this->assertNull($GLOBALS['template'], 'template bleibt null – str_replace wird nicht aufgerufen');
+
+        unlink($confDir . 'plugin.conf.php');
+        rmdir($confDir);
+        rmdir($tmpBase . 'plugins');
+        rmdir($tmpBase);
+    }
+
+    /**
+     * Sonderzeichen in Description werden durch htmlspecialchars() korrekt kodiert.
+     * MetaKeywordsDescription speichert unescaped – kein Doppel-Escaping möglich.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testApplyMetaKeywordsDescriptionHtmlEscaping(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        $confDir = $tmpBase . 'plugins' . DIRECTORY_SEPARATOR . 'MetaKeywordsDescription' . DIRECTORY_SEPARATOR;
+        mkdir($confDir, 0777, true);
+
+        $cat  = 'Kontakt';
+        $page = 'team';
+        $key  = '@=' . $cat . ':' . $page . '=@';
+        $conf = [$key => ['description' => 'Lohn & Gehalt <aktuell>', 'keywords' => 'Steuer & Recht']];
+        file_put_contents($confDir . 'plugin.conf.php', "<?php die();\n" . serialize($conf));
+        define('BASE_DIR', $tmpBase);
+
+        global $template;
+        $template = '{WEBSITE_DESCRIPTION} | {WEBSITE_KEYWORDS}';
+
+        $ref = new \ReflectionMethod('_seo_urls', 'applyMetaKeywordsDescription');
+        $ref->setAccessible(true);
+        $ref->invoke(null, $cat, $page);
+
+        $this->assertSame(
+            'Lohn &amp; Gehalt &lt;aktuell&gt; | Steuer &amp; Recht',
+            $template,
+            'htmlspecialchars() kodiert & und <> korrekt'
+        );
+
+        unlink($confDir . 'plugin.conf.php');
+        rmdir($confDir);
+        rmdir($tmpBase . 'plugins');
+        rmdir($tmpBase);
+    }
+
+    // -----------------------------------------------------------------------
+    // Seo_Urls_MetaConfig::lookup() – RunInSeparateProcess wegen BASE_DIR-Konstante
+    // -----------------------------------------------------------------------
+
+    /**
+     * Nicht existierende Datei → null.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testMetaConfigLookupNichtVorhandeneDatei(): void {
+        define('BASE_DIR', sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_doesnotexist_' . uniqid() . DIRECTORY_SEPARATOR);
+        $result = Seo_Urls_MetaConfig::lookup('Kontakt', 'Impressum');
+        $this->assertNull($result, 'Nicht vorhandene Datei → null');
+    }
+
+    /**
+     * Datei mit korruptem Serialisierungs-Inhalt → null (graceful degradation).
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testMetaConfigLookupKorrupteDatei(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        $confDir = $tmpBase . 'plugins' . DIRECTORY_SEPARATOR . 'MetaKeywordsDescription' . DIRECTORY_SEPARATOR;
+        mkdir($confDir, 0777, true);
+        file_put_contents($confDir . 'plugin.conf.php', "<?php die();\na:KORRUPT{{{");
+        define('BASE_DIR', $tmpBase);
+
+        set_error_handler(static fn() => true, E_WARNING);
+        $result = Seo_Urls_MetaConfig::lookup('Kontakt', 'Impressum');
+        restore_error_handler();
+
+        $this->assertNull($result, 'Korrupte Datei → null');
+
+        unlink($confDir . 'plugin.conf.php');
+        rmdir($confDir);
+        rmdir($tmpBase . 'plugins');
+        rmdir($tmpBase);
+    }
+
+    /**
+     * Serialisiertes Objekt → null (allowed_classes => false verhindert Instanziierung).
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testMetaConfigLookupObjektImBlob(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        $confDir = $tmpBase . 'plugins' . DIRECTORY_SEPARATOR . 'MetaKeywordsDescription' . DIRECTORY_SEPARATOR;
+        mkdir($confDir, 0777, true);
+        // Serialisiertes Objekt statt Array – soll abgewiesen werden
+        $blob = serialize(new \stdClass());
+        file_put_contents($confDir . 'plugin.conf.php', "<?php die();\n" . $blob);
+        define('BASE_DIR', $tmpBase);
+
+        set_error_handler(static fn() => true, E_WARNING | E_NOTICE);
+        $result = Seo_Urls_MetaConfig::lookup('Kontakt', 'Impressum');
+        restore_error_handler();
+
+        $this->assertNull($result, 'Serialisiertes Objekt → null (is_array-Guard)');
+
+        unlink($confDir . 'plugin.conf.php');
+        rmdir($confDir);
+        rmdir($tmpBase . 'plugins');
+        rmdir($tmpBase);
+    }
+
+    /**
+     * Valide plugin.conf.php mit bekanntem Eintrag → korrekte Beschreibung.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testMetaConfigLookupEintragVorhanden(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        $confDir = $tmpBase . 'plugins' . DIRECTORY_SEPARATOR . 'MetaKeywordsDescription' . DIRECTORY_SEPARATOR;
+        mkdir($confDir, 0777, true);
+        copy(__DIR__ . '/fixtures/meta_plugin_conf.php', $confDir . 'plugin.conf.php');
+        define('BASE_DIR', $tmpBase);
+
+        $result = Seo_Urls_MetaConfig::lookup('Kontakt', 'Impressum');
+
+        $this->assertIsArray($result, 'Vorhandener Eintrag → Array');
+        $this->assertSame(
+            'Kontaktieren Sie uns – persoenliche Steuerberatung.',
+            $result['description'],
+            'description korrekt'
+        );
+        $this->assertSame('Steuerberatung, Kontakt, Kanzlei', $result['keywords'], 'keywords korrekt');
+
+        unlink($confDir . 'plugin.conf.php');
+        rmdir($confDir);
+        rmdir($tmpBase . 'plugins');
+        rmdir($tmpBase);
+    }
+
+    /**
+     * Valide Datei, aber cat/page-Kombination nicht enthalten → null.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testMetaConfigLookupEintragNichtVorhanden(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        $confDir = $tmpBase . 'plugins' . DIRECTORY_SEPARATOR . 'MetaKeywordsDescription' . DIRECTORY_SEPARATOR;
+        mkdir($confDir, 0777, true);
+        copy(__DIR__ . '/fixtures/meta_plugin_conf.php', $confDir . 'plugin.conf.php');
+        define('BASE_DIR', $tmpBase);
+
+        $result = Seo_Urls_MetaConfig::lookup('GibtEsNicht', 'Seite');
+
+        $this->assertNull($result, 'Nicht vorhandener Eintrag → null');
+
+        unlink($confDir . 'plugin.conf.php');
+        rmdir($confDir);
+        rmdir($tmpBase . 'plugins');
+        rmdir($tmpBase);
+    }
+
+    /**
+     * Umlaut-Kategorie: rawurlencode() erzeugt korrekten Schlüssel (@=%C3%9Cber%20unsere%20Kanzlei:Historie=@).
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testMetaConfigLookupUmlautKategorie(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        $confDir = $tmpBase . 'plugins' . DIRECTORY_SEPARATOR . 'MetaKeywordsDescription' . DIRECTORY_SEPARATOR;
+        mkdir($confDir, 0777, true);
+        copy(__DIR__ . '/fixtures/meta_plugin_conf.php', $confDir . 'plugin.conf.php');
+        define('BASE_DIR', $tmpBase);
+
+        // Kategorie URL-decoded übergeben – lookup() kodiert intern mit rawurlencode()
+        $result = Seo_Urls_MetaConfig::lookup('Über unsere Kanzlei', 'Historie');
+
+        $this->assertIsArray($result, 'Umlaut-Kategorie → Array');
+        $this->assertSame(
+            'Unsere Kanzlei blickt auf jahrzehntelange Erfahrung zurueck.',
+            $result['description'],
+            'description für Umlaut-Kategorie korrekt'
+        );
 
         unlink($confDir . 'plugin.conf.php');
         rmdir($confDir);

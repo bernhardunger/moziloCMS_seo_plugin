@@ -1,0 +1,2 @@
+<?php die(); ?>
+a:2:{s:21:"@=Kontakt:Impressum=@";a:2:{s:11:"description";s:53:"Kontaktieren Sie uns – persoenliche Steuerberatung.";s:8:"keywords";s:32:"Steuerberatung, Kontakt, Kanzlei";}s:41:"@=%C3%9Cber%20unsere%20Kanzlei:Historie=@";a:2:{s:11:"description";s:60:"Unsere Kanzlei blickt auf jahrzehntelange Erfahrung zurueck.";s:8:"keywords";s:30:"Kanzlei, Geschichte, Erfahrung";}}
