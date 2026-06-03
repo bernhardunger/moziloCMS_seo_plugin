@@ -23,7 +23,7 @@ if (!defined('IS_CMS')) die();
  * die Datei nicht lesbar ist oder kein Eintrag existiert.
  * Graceful degradation: kein Fatal Error, kein leerer Meta-Tag.
  */
-final class Seo_Urls_MetaConfig
+final class MetaKeywordsDescriptionAdapter
 {
     /**
      * Liest Meta-Konfiguration für eine Kategorie/Seite aus der
@@ -350,7 +350,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     /**
      * Setzt {WEBSITE_DESCRIPTION} und {WEBSITE_KEYWORDS} im Template.
      *
-     * Delegiert das Lesen der plugin.conf.php an Seo_Urls_MetaConfig::lookup().
+     * Delegiert das Lesen der plugin.conf.php an MetaKeywordsDescriptionAdapter::lookup().
      * Wird nach handleRequest() aufgerufen, wenn $cat/$page bereits korrekt
      * ermittelt wurden.
      *
@@ -366,7 +366,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             return;
         }
 
-        $setting = Seo_Urls_MetaConfig::lookup($cat, $page);
+        $setting = MetaKeywordsDescriptionAdapter::lookup($cat, $page);
         if ($setting === null) {
             return;
         }

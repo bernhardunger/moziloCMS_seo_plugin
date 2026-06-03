@@ -1122,7 +1122,7 @@ class SeoUrlsTest extends TestCase {
     }
 
     // -----------------------------------------------------------------------
-    // Seo_Urls_MetaConfig::lookup() – RunInSeparateProcess wegen BASE_DIR-Konstante
+    // MetaKeywordsDescriptionAdapter::lookup() – RunInSeparateProcess wegen BASE_DIR-Konstante
     // -----------------------------------------------------------------------
 
     /**
@@ -1132,7 +1132,7 @@ class SeoUrlsTest extends TestCase {
     #[PreserveGlobalState(false)]
     public function testMetaConfigLookupNichtVorhandeneDatei(): void {
         define('BASE_DIR', sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_doesnotexist_' . uniqid() . DIRECTORY_SEPARATOR);
-        $result = Seo_Urls_MetaConfig::lookup('Kontakt', 'Impressum');
+        $result = MetaKeywordsDescriptionAdapter::lookup('Kontakt', 'Impressum');
         $this->assertNull($result, 'Nicht vorhandene Datei → null');
     }
 
@@ -1149,7 +1149,7 @@ class SeoUrlsTest extends TestCase {
         define('BASE_DIR', $tmpBase);
 
         set_error_handler(static fn() => true, E_WARNING);
-        $result = Seo_Urls_MetaConfig::lookup('Kontakt', 'Impressum');
+        $result = MetaKeywordsDescriptionAdapter::lookup('Kontakt', 'Impressum');
         restore_error_handler();
 
         $this->assertNull($result, 'Korrupte Datei → null');
@@ -1183,7 +1183,7 @@ class SeoUrlsTest extends TestCase {
         define('BASE_DIR', $tmpBase);
 
         set_error_handler(static fn() => true, E_WARNING | E_NOTICE);
-        $result = Seo_Urls_MetaConfig::lookup('Kontakt', 'Impressum');
+        $result = MetaKeywordsDescriptionAdapter::lookup('Kontakt', 'Impressum');
         restore_error_handler();
 
         $this->assertNull($result, 'Array-Blob mit eingebettetem Objekt → null (Key-not-found nach allowed_classes-Schutz)');
@@ -1213,7 +1213,7 @@ class SeoUrlsTest extends TestCase {
         file_put_contents($confDir . 'plugin.conf.php', "<?php die();\n" . $blob);
         define('BASE_DIR', $tmpBase);
 
-        $result = Seo_Urls_MetaConfig::lookup('Kontakt', 'Impressum');
+        $result = MetaKeywordsDescriptionAdapter::lookup('Kontakt', 'Impressum');
 
         $this->assertNull($result, 'Reines Objekt-Blob ohne a:-Prefix → null (strpos-Guard)');
 
@@ -1235,7 +1235,7 @@ class SeoUrlsTest extends TestCase {
         copy(__DIR__ . '/fixtures/meta_plugin_conf.php', $confDir . 'plugin.conf.php');
         define('BASE_DIR', $tmpBase);
 
-        $result = Seo_Urls_MetaConfig::lookup('Kontakt', 'Impressum');
+        $result = MetaKeywordsDescriptionAdapter::lookup('Kontakt', 'Impressum');
 
         $this->assertIsArray($result, 'Vorhandener Eintrag → Array');
         $this->assertSame(
@@ -1263,7 +1263,7 @@ class SeoUrlsTest extends TestCase {
         copy(__DIR__ . '/fixtures/meta_plugin_conf.php', $confDir . 'plugin.conf.php');
         define('BASE_DIR', $tmpBase);
 
-        $result = Seo_Urls_MetaConfig::lookup('GibtEsNicht', 'Seite');
+        $result = MetaKeywordsDescriptionAdapter::lookup('GibtEsNicht', 'Seite');
 
         $this->assertNull($result, 'Nicht vorhandener Eintrag → null');
 
@@ -1286,7 +1286,7 @@ class SeoUrlsTest extends TestCase {
         define('BASE_DIR', $tmpBase);
 
         // Kategorie URL-decoded übergeben – lookup() kodiert intern mit rawurlencode()
-        $result = Seo_Urls_MetaConfig::lookup('Über unsere Kanzlei', 'Historie');
+        $result = MetaKeywordsDescriptionAdapter::lookup('Über unsere Kanzlei', 'Historie');
 
         $this->assertIsArray($result, 'Umlaut-Kategorie → Array');
         $this->assertSame(
@@ -1316,7 +1316,7 @@ class SeoUrlsTest extends TestCase {
         define('BASE_DIR', $tmpBase);
 
         // Seitenname URL-decoded übergeben – lookup() verwendet ihn direkt (kein rawurlencode)
-        $result = Seo_Urls_MetaConfig::lookup('Kategorie', 'Über Uns');
+        $result = MetaKeywordsDescriptionAdapter::lookup('Kategorie', 'Über Uns');
 
         $this->assertIsArray($result, 'Umlaut-Seitenname → Array');
         $this->assertSame(
