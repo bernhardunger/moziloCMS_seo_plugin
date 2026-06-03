@@ -55,7 +55,7 @@ class SeoUrlsIntegrationTest extends TestCase
 
     public function testBasisRoutingSlugUrl(): void
     {
-        $result = $this->makeRequest(self::BASE_URL . '/dein-slug/');
+        $result = $this->makeRequest(rtrim(self::BASE_URL, '/') . '/dein-slug/');
 
         $this->assertSame(200, $result['status']);
         $this->assertStringContainsString('<html', $result['body']);
@@ -65,7 +65,7 @@ class SeoUrlsIntegrationTest extends TestCase
     {
         // URL-Encoding: Ü = %C3%9C, Leerzeichen = %20
         $result = $this->makeRequest(
-            self::BASE_URL . '/%C3%9Cber%20deine%20Kategorie',
+            rtrim(self::BASE_URL, '/') . '/%C3%9Cber%20deine%20Kategorie',
             false
         );
 
@@ -79,7 +79,7 @@ class SeoUrlsIntegrationTest extends TestCase
     public function testRedirectHtmlUrl(): void
     {
         $result = $this->makeRequest(
-            self::BASE_URL . '/dein-slug/deine-unterseite.html',
+            rtrim(self::BASE_URL, '/') . '/dein-slug/deine-unterseite.html',
             false
         );
 
@@ -92,21 +92,21 @@ class SeoUrlsIntegrationTest extends TestCase
 
     public function testCanonicalTag(): void
     {
-        $result = $this->makeRequest(self::BASE_URL . '/dein-slug/deine-unterseite/');
+        $result = $this->makeRequest(rtrim(self::BASE_URL, '/') . '/dein-slug/deine-unterseite/');
 
         $this->assertStringContainsString('rel="canonical"', $result['body']);
     }
 
     public function testMetaDescription(): void
     {
-        $result = $this->makeRequest(self::BASE_URL . '/dein-slug/deine-unterseite/');
+        $result = $this->makeRequest(rtrim(self::BASE_URL, '/') . '/dein-slug/deine-unterseite/');
 
         $this->assertStringContainsString('name="description"', $result['body']);
     }
 
     public function testSitemap(): void
     {
-        $result = $this->makeRequest(self::BASE_URL . '/sitemap.xml');
+        $result = $this->makeRequest(rtrim(self::BASE_URL, '/') . '/sitemap.xml');
 
         $this->assertSame(200, $result['status']);
         $this->assertStringContainsString(
@@ -118,14 +118,14 @@ class SeoUrlsIntegrationTest extends TestCase
 
     public function testStartseiteKeinRedirectLoop(): void
     {
-        $result = $this->makeRequest(self::BASE_URL . '/');
+        $result = $this->makeRequest(rtrim(self::BASE_URL, '/') . '/');
 
         $this->assertSame(200, $result['status']);
     }
 
     public function testAdminBereichNichtAbgefangen(): void
     {
-        $result = $this->makeRequest(self::BASE_URL . '/admin/');
+        $result = $this->makeRequest(rtrim(self::BASE_URL, '/') . '/admin/');
 
         $this->assertSame(200, $result['status']);
         $this->assertNotSame(301, $result['status']);
@@ -133,7 +133,7 @@ class SeoUrlsIntegrationTest extends TestCase
 
     public function testDebugMap(): void
     {
-        $result = $this->makeRequest(self::BASE_URL . '/?seo_debug=1');
+        $result = $this->makeRequest(rtrim(self::BASE_URL, '/') . '/?seo_debug=1');
 
         $this->assertSame(200, $result['status']);
         $this->assertStringContainsString('seo_debug', $result['body']);
@@ -141,7 +141,7 @@ class SeoUrlsIntegrationTest extends TestCase
 
     public function testUnbekannterSlugKeinFatalError(): void
     {
-        $result = $this->makeRequest(self::BASE_URL . '/dieser-slug-existiert-nicht/');
+        $result = $this->makeRequest(rtrim(self::BASE_URL, '/') . '/dieser-slug-existiert-nicht/');
 
         $this->assertNotSame(500, $result['status']);
     }
