@@ -402,11 +402,12 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
      * @param int    $code  HTTP-Statuscode (Standard: 301)
      */
     protected static function redirect(string $url, int $code = 301): void {
+        $url = str_replace(["\r", "\n"], '', $url);
         if (self::$redirector !== null) {
             call_user_func(self::$redirector, $url, $code);
             return;
         }
-        header('Location: ' . str_replace(["\r", "\n"], '', $url), true, $code);
+        header('Location: ' . $url, true, $code);
         exit;
     }
 
