@@ -45,6 +45,15 @@ class _seo_urls extends Plugin {
      */
     private static $redirector = null;
 
+    /** Sprachobjekt für Admin-Info (getInfo). Null bis zur ersten Nutzung. */
+    private ?Language $admin_lang = null;
+
+    /** Standard-Sprache für Admin-Info. */
+    private const DEFAULT_LANGUAGE = 'de';
+
+    /** Unterstützte Sprachen für Admin-Info. */
+    private const SUPPORTED_LANGUAGES = ['de', 'en'];
+
     const VERSION = 'v1.3.5';
 
     const SYSTEM_PATHS = [
@@ -129,55 +138,50 @@ class _seo_urls extends Plugin {
         return $config;
     }
 
-    function getInfo() {
+    /**
+     * Ermittelt den Sprachcode für die Admin-Info-Sprachdatei.
+     *
+     * Empfängt den rohen Sprachcode aus $ADMIN_CONF (z.B. 'deDE', 'enUS', 'de').
+     * Normalisiert auf Kleinschreibung und prüft via str_starts_with() gegen
+     * SUPPORTED_LANGUAGES. Liefert beim ersten Treffer den Kurzcode (z.B. 'de').
+     * Fällt bei unbekannten Locales auf DEFAULT_LANGUAGE zurück.
+     *
+     * @param string|null $code  Sprachcode aus $ADMIN_CONF->get('language')
+     * @return string            Kurzcode ('de' oder 'en')
+     */
+    private function resolvePluginLanguage(?string $code): string
+    {
+        if ($code !== null) {
+            $lower = strtolower($code);
+            foreach (self::SUPPORTED_LANGUAGES as $supported) {
+                if (str_starts_with($lower, $supported)) {
+                    return $supported;
+                }
+            }
+        }
+        return self::DEFAULT_LANGUAGE;
+    }
+
+    function getInfo()
+    {
+        global $ADMIN_CONF;
+
+        $lang = $this->resolvePluginLanguage(
+            $ADMIN_CONF->get('language') ?? self::DEFAULT_LANGUAGE
+        );
+        $this->admin_lang = new Language(
+            $this->PLUGIN_SELF_DIR . 'sprachen/admin_language_' . $lang . '.txt'
+        );
 
         $htaccessStatus = self::checkHtaccess();
 
-        $description = '
-<p>Wandelt Kategorie- und Seitennamen in SEO-freundliche URL-Slugs um.
-Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrite()</code>.</p>
-
-' . $htaccessStatus . '
-
-<h4 style="color:#000;font-weight:bold;">Voraussetzungen</h4>
-<table>
-  <tr><td><b>moziloCMS</b></td><td>3.0.x oder höher (moziloCMS 2.x wird nicht unterstützt)<br>
-    <small style="color:#666;">Hinweis zur Versionsangabe &ldquo;2.0&nbsp;/&nbsp;3.0&rdquo;: moziloCMS pr&uuml;ft intern,
-    ob der Versionsstring die Ziffer &ldquo;2&rdquo; enth&auml;lt (<code>strpos()</code> in <code>admin/plugins.php</code>).
-    Fehlt sie, deaktiviert moziloCMS das Plugin im Admin automatisch.</small></td></tr>
-  <tr><td><b>PHP</b></td><td>8.1 oder höher</td></tr>
-  <tr><td><b>iconv</b></td><td>Empfohlen (für Akzent-Transliteration in <code>slugify()</code>; auf Standard-PHP und IONOS immer aktiv)</td></tr>
-  <tr><td><b>.htaccess</b></td><td>Sitemap-Regel und Catch-All-Regeln erforderlich – siehe htaccess_snippet.txt</td></tr>
-</table>
-
-<h4 style="color:#000;font-weight:bold;">Wichtige Hinweise zur Installation</h4>
-<ul>
-  <li>Das Plugin wird im Admin-Bereich unter <b>Plugins</b> aktiviert &ndash; kein weiterer Aufruf in der <code>template.html</code> oder in einer Inhaltsseite notwendig.</li>
-  <li>Die <code>.htaccess</code> muss manuell um die Sitemap-Regel und die Catch-All-Regeln aus <code>htaccess_snippet.txt</code> erg&auml;nzt werden &ndash; ohne diese Regeln werden Slug-URLs mit &ldquo;Not Found&rdquo; beantwortet.<br /><b>Wichtig:</b> Die Regeln immer vollst&auml;ndig eintragen oder vollst&auml;ndig entfernen &ndash; eine teilweise Konfiguration kann den Admin-Bereich unzug&auml;nglich machen.</li>
-  <li>Sind die erforderlichen Regeln unvollst&auml;ndig, fehlerhaft oder auskommentiert, setzt das Plugin den URL-Rewrite aus (SEO-URLs inaktiv) und nimmt den Betrieb automatisch wieder auf, sobald die <code>.htaccess</code> korrekt konfiguriert ist &ndash; kein erneutes Aktivieren im Admin n&ouml;tig.</li>
-  <li>HTTPS- und WWW-Weiterleitung m&uuml;ssen ebenfalls in der <code>.htaccess</code> eingetragen werden (Domain anpassen).</li>
-</ul>
-
-<h4>Funktionen</h4>
-<table>
-  <tr><td><b>Umlaut-Ersetzung</b></td><td>ä→ae, ö→oe, ü→ue, ß→ss (+ gängige Akzente)</td></tr>
-  <tr><td><b>Leerzeichen</b></td><td>Werden durch Bindestriche ersetzt</td></tr>
-  <tr><td><b>Link-Rewriting</b></td><td>Alle internen <code>href</code>-Links im HTML-Output werden umgeschrieben</td></tr>
-  <tr><td><b>301-Redirect</b></td><td>Alte Pfade mit Umlauten/Leerzeichen werden permanent weitergeleitet</td></tr>
-  <tr><td><b>Kollisionsschutz</b></td><td>Identische Slugs erhalten automatisch ein Suffix (<code>-2</code>, <code>-3</code> …)</td></tr>
-  <tr><td><b>Sitemap-kompatibel</b></td><td><code>?action=sitemap</code> funktioniert unverändert, Links werden ebenfalls umgeschrieben</td></tr>
-  <tr><td><b>MetaKeywordsDescription</b></td><td>Kompatibel mit dem MetaKeywordsDescription Plugin – individuelle Meta-Angaben pro Seite werden korrekt gesetzt</td></tr>
-</table>
-
-<h4>Beispiele</h4>
-<table>
-  <tr><td>Original-Pfad</td><td>Slug-URL</td></tr>
-  <tr><td><code>/Über Uns/</code></td><td><code>/ueber-uns/</code></td></tr>
-  <tr><td><code>/Über Uns/Unser Team/</code></td><td><code>/ueber-uns/unser-team/</code></td></tr>
-  <tr><td><code>/Häufige Fragen/</code></td><td><code>/haeufige-fragen/</code></td></tr>
-</table>
-
-';
+        $description =
+            $this->admin_lang->getLanguageValue('info_intro') .
+            "\n" . $htaccessStatus . "\n" .
+            $this->admin_lang->getLanguageValue('info_requirements') .
+            $this->admin_lang->getLanguageValue('info_install') .
+            $this->admin_lang->getLanguageValue('info_features') .
+            $this->admin_lang->getLanguageValue('info_examples');
 
         $info = [
             '<b>seo_urls</b> ' . self::VERSION,
@@ -187,7 +191,7 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
             $description,
             '',
             '',
-            ['seo', 'url', 'rewrite', 'slug']
+            []  // plugin_first-Plugin: kein einfügbarer {_seo_urls}-Tag
         ];
 
         return $info;
