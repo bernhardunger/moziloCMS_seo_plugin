@@ -4,3 +4,4 @@ vendor/
 .phpunit.result.cache
 tests/integration/SeoUrlsIntegrationTest.php
 
+memory/
