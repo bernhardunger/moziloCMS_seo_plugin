@@ -97,6 +97,41 @@ class SeoUrlsTest extends TestCase {
         $this->assertSame('angstroem', _seo_urls::slugify('Ångström'));
     }
 
+    /**
+     * Emoji wird von iconv //IGNORE entfernt – Slug bleibt valide.
+     */
+    public function testSlugifyEmoji(): void {
+        $this->assertSame('kontakt', _seo_urls::slugify('Kontakt 📞'));
+    }
+
+    /**
+     * Rein nicht-lateinische Zeichen liefern bei iconv nichts Konvertierbares –
+     * für nicht-lateinische Namen ist 'seite' definiertes Fallback-Verhalten.
+     */
+    public function testSlugifyCjkZeichen(): void {
+        $this->assertSame('seite', _seo_urls::slugify('日本語'));
+    }
+
+    /**
+     * Ungültige UTF-8-Bytes am Anfang dürfen keinen Fatal Error auslösen.
+     */
+    public function testSlugifyMalformedUtf8(): void {
+        $result = _seo_urls::slugify("\xFF\xFE ungültiges UTF-8");
+        $this->assertTrue(
+            self::callStatic('isSlug', $result) || $result === 'seite',
+            "'{$result}' muss ein valider Slug oder 'seite' sein"
+        );
+    }
+
+    /**
+     * Sehr langer Name darf keinen Fatal Error auslösen und muss einen
+     * validen Slug (nur a-z0-9-) ergeben.
+     */
+    public function testSlugifySehrLangerName(): void {
+        $result = _seo_urls::slugify(str_repeat('a', 300) . ' test');
+        $this->assertMatchesRegularExpression('/^[a-z0-9-]+$/', $result);
+    }
+
     // -----------------------------------------------------------------------
     // isSlug()
     // -----------------------------------------------------------------------
@@ -1325,6 +1360,79 @@ class SeoUrlsTest extends TestCase {
             'description für Umlaut-Seitenname korrekt'
         );
         $this->assertSame('', $result['keywords'], 'keywords leer');
+
+        unlink($confDir . 'plugin.conf.php');
+        rmdir($confDir);
+        rmdir($tmpBase . 'plugins');
+        rmdir($tmpBase);
+    }
+
+    // -----------------------------------------------------------------------
+    // Security-Regression
+    // -----------------------------------------------------------------------
+
+    /**
+     * Path-Traversal-Versuch im Pfad → kein Redirect, kein Fatal Error.
+     * Plugin macht KEINE Dateisystemzugriffe mit dem Pfad, nur Map-Lookups –
+     * kein Angriffsvektor.
+     */
+    public function testHandleRequestPathTraversalKeinMapTreffer(): void {
+        $_SERVER['REQUEST_URI'] = '/ueber-uns/../../../etc/passwd';
+
+        [$url, $code] = self::captureRedirect(function () {
+            self::callStatic('handleRequest');
+        });
+
+        $this->assertNull($url, 'Path-Traversal-Pfad darf keinen Redirect auslösen');
+        $this->assertNull($code);
+        $this->assertArrayNotHasKey('cat',  $_GET);
+        $this->assertArrayNotHasKey('page', $_GET);
+    }
+
+    /**
+     * CRLF im Redirect-Ziel wird entfernt – verhindert HTTP Header Injection
+     * (zusätzliche Response-Header über die Location-Antwort).
+     */
+    public function testRedirectCrlfWirdGestrippt(): void {
+        [$url, $code] = self::captureRedirect(function () {
+            self::callStatic('redirect', "/test/\r\nX-Injected: evil", 301);
+        });
+
+        $this->assertSame('/test/X-Injected: evil', $url);
+        $this->assertStringNotContainsString("\r", $url);
+        $this->assertStringNotContainsString("\n", $url);
+        $this->assertSame(301, $code);
+    }
+
+    /**
+     * XSS-Payload (<script> + ") in der Description wird durch
+     * htmlspecialchars(ENT_QUOTES) vollständig escaped – kein
+     * Code-Execution oder Attribut-Ausbruch im Template möglich.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testApplyMetaKeywordsDescriptionXssEscaping(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        $confDir = $tmpBase . 'plugins' . DIRECTORY_SEPARATOR . 'MetaKeywordsDescription' . DIRECTORY_SEPARATOR;
+        mkdir($confDir, 0777, true);
+
+        $cat  = 'Kontakt';
+        $page = 'team';
+        $key  = '@=' . $cat . ':' . $page . '=@';
+        $conf = [$key => ['description' => '<script>alert(1)</script> sagt "Hallo"', 'keywords' => '']];
+        file_put_contents($confDir . 'plugin.conf.php', "<?php die();\n" . serialize($conf));
+        define('BASE_DIR', $tmpBase);
+
+        global $template;
+        $template = '{WEBSITE_DESCRIPTION}';
+
+        $ref = new \ReflectionMethod('_seo_urls', 'applyMetaKeywordsDescription');
+        $ref->setAccessible(true);
+        $ref->invoke(null, $cat, $page);
+
+        $this->assertStringContainsString('&lt;script&gt;', $template, '<script> wird escaped');
+        $this->assertStringNotContainsString('<script>', $template, 'kein unescaped <script> im Template');
+        $this->assertStringContainsString('&quot;', $template, '" wird escaped');
 
         unlink($confDir . 'plugin.conf.php');
         rmdir($confDir);
