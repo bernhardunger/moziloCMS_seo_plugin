@@ -1441,8 +1441,62 @@ class SeoUrlsTest extends TestCase {
     }
 
     // -----------------------------------------------------------------------
+    // resolvePluginLanguage() – Sprach-Auflösung für Admin-Info
+    // -----------------------------------------------------------------------
+
+    public function testResolvePluginLanguageDeDE(): void {
+        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', 'deDE'));
+    }
+
+    public function testResolvePluginLanguageDeCH(): void {
+        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', 'deCH'));
+    }
+
+    public function testResolvePluginLanguageDeAT(): void {
+        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', 'deAT'));
+    }
+
+    public function testResolvePluginLanguageEnUS(): void {
+        $this->assertSame('en', $this->callInstance('resolvePluginLanguage', 'enUS'));
+    }
+
+    public function testResolvePluginLanguageEnGB(): void {
+        $this->assertSame('en', $this->callInstance('resolvePluginLanguage', 'enGB'));
+    }
+
+    public function testResolvePluginLanguageDe(): void {
+        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', 'de'));
+    }
+
+    public function testResolvePluginLanguageEn(): void {
+        $this->assertSame('en', $this->callInstance('resolvePluginLanguage', 'en'));
+    }
+
+    public function testResolvePluginLanguageFrFRFaelltZurueck(): void {
+        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', 'frFR'));
+    }
+
+    public function testResolvePluginLanguageNullFaelltZurueck(): void {
+        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', null));
+    }
+
+    public function testResolvePluginLanguageLeerFaelltZurueck(): void {
+        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', ''));
+    }
+
+    public function testResolvePluginLanguageGrossschreibungWirdNormalisiert(): void {
+        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', 'DEDE'));
+    }
+
+    // -----------------------------------------------------------------------
     // Reflection- und Injektions-Hilfsmethoden
     // -----------------------------------------------------------------------
+
+    private function callInstance(string $method, mixed ...$args): mixed {
+        $ref = new ReflectionMethod('_seo_urls', $method);
+        $ref->setAccessible(true);
+        return $ref->invoke(new _seo_urls(), ...$args);
+    }
 
     private static function callStatic(string $method, mixed ...$args): mixed {
         $ref = new ReflectionMethod('_seo_urls', $method);

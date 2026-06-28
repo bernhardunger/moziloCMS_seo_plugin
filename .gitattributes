@@ -2,6 +2,7 @@
 
 # Export-Ignore: wird nicht in Release-ZIPs eingebunden
 tests/          export-ignore
+memory/         export-ignore
 vendor/         export-ignore
 composer.json   export-ignore
 composer.lock   export-ignore
