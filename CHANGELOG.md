@@ -4,6 +4,73 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
 
 ---
 
+## [v1.3.6] – 2026-06-28
+
+### Verbessert
+
+- **F18: Admin-Info mehrsprachig (de/en)**
+  `getInfo()` lieferte die Plugin-Info bisher hartkodiert auf Deutsch.
+  Die Texte sind jetzt in Sprachdateien ausgelagert und erscheinen in der
+  im moziloCMS-Admin eingestellten Sprache (Deutsch oder Englisch).
+  Fallback auf Deutsch für alle übrigen Sprachen.
+  - `private ?Language $admin_lang = null;` deklariert (PHP 8.2-clean,
+    keine dynamische Property)
+  - `resolvePluginLanguage(?string $code): string` – normalisiert auf
+    Kurzcode: `deDE`/`deCH`/`deAT` → `de`; `enUS`/`enGB` → `en`;
+    unbekannt/`null` → `de`
+  - `sprachen/admin_language_de.txt` + `sprachen/admin_language_en.txt`
+    (je 5 Keys, HTML-Werte einzeilig)
+  - `$info[5] = []` (plugin_first-Rewrite-Plugin ohne einfügbaren Tag)
+  - `$htaccessStatus` aus `checkHtaccess()` bleibt inline (dynamisch)
+
+### Behoben
+
+- **F17: CRLF-Stripping in `redirect()` griff nur im `header()`-Zweig**
+  `str_replace(["\r", "\n"], '', $url)` wurde vor der Verzweigung in
+  `header()`-Pfad und `$redirector`-Test-Seam angewendet. Bisher erhielt
+  der `$redirector`-Seam den unbereinigten String – kein Produktionsrisiko
+  (Seam ist nur in PHPUnit aktiv), aber konzeptionell falsch.
+
+### Refactoring
+
+- **TODO 1: `MetaKeywordsDescriptionAdapter` kapselt Fremdformat**
+  Neue finale Klasse `MetaKeywordsDescriptionAdapter` (vor `_seo_urls`
+  definiert) bündelt das gesamte Wissen über die `plugin.conf.php` des
+  MetaKeywordsDescription-Plugins an einer Stelle:
+  Pfadaufbau, `"php die();"`-Header-Skip, `unserialize`,
+  Schlüsselformat `@=rawurlencode(cat):page=@`, Typ-Checks.
+  `applyMetaKeywordsDescription()` delegiert nur noch an
+  `MetaKeywordsDescriptionAdapter::lookup()`.
+  Ändert MetaKeywordsDescription sein Speicherformat, ist nur
+  diese Klasse anzupassen.
+  Zusätzlich: `htmlspecialchars(ENT_QUOTES, 'UTF-8')` auf Description
+  und Keywords (waren bisher roh ins Template geschrieben).
+
+### Tests
+
+- **F15: Security-Regressionstests**
+  Drei neue Tests dokumentieren korrekte Abwehr bekannter Angriffsmuster:
+  Path Traversal (nur Map-Lookup, kein Dateisystemzugriff),
+  CRLF-Header-Injection in `redirect()`,
+  XSS-Escaping in Meta-Description via `htmlspecialchars(ENT_QUOTES)`.
+
+- **F16: Unicode-Edge-Cases für `slugify()`**
+  Vier neue Tests sichern definiertes Verhalten bei exotischem Input ab:
+  Emoji → via `iconv //IGNORE` entfernt, Slug bleibt valide;
+  CJK-Zeichen (`日本語`) → Fallback `'seite'` (dokumentiertes Verhalten);
+  malformed UTF-8 → kein Fatal Error;
+  Name > 255 Zeichen → kein Fehler.
+
+- **F18: `resolvePluginLanguage()`-Tests**
+  11 neue Tests: exakte Locale-Codes, Varianten (`deCH`, `deAT`, `enGB`),
+  Kurzcode direkt, Fallback für unbekannte Locales, `null`, Leerstring,
+  Großschreibung (`DEDE` → `de`). `callInstance()`-Helper für private
+  Instanzmethoden ergänzt.
+
+- 112 Tests / 170 Assertions / 1 skipped – alle grün
+
+---
+
 ## [v1.3.5] – 2026-06-01
 
 ### Behoben

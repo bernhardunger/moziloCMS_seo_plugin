@@ -14,6 +14,7 @@ Wandelt Kategorie- und Seitennamen in saubere, Google-freundliche URL-Slugs um.
 | **Sitemap-kompatibel** | `?action=sitemap` funktioniert unverändert, Links werden ebenfalls umgeschrieben |
 | **MetaKeywordsDescription** | Individuelle Meta-Descriptions und Keywords pro Seite werden korrekt ausgespielt |
 | **.htaccess-Prüfung** | Plugin prüft beim Start die .htaccess-Konfiguration und deaktiviert sich bei Fehlern automatisch |
+| **Mehrsprachige Admin-Info** | Plugin-Info-Tab erscheint in der moziloCMS-Backendsprache (Deutsch oder Englisch) |
 
 **Beispiele:**
 
