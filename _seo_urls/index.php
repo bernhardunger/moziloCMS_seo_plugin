@@ -10,6 +10,85 @@ if (!defined('IS_CMS')) die();
  * Änderungshistorie: siehe CHANGELOG.md
  */
 
+/**
+ * Kapselt den Zugriff auf die plugin.conf.php des
+ * MetaKeywordsDescription-Plugins.
+ *
+ * Das Fremdformat (PHP-Serialisierung, URL-kodierte Schlüssel,
+ * "php die();"-Header) ist an genau einer Stelle gebündelt.
+ * Ändert MetaKeywordsDescription sein Speicherformat, ist nur
+ * diese Klasse anzupassen – nicht applyMetaKeywordsDescription().
+ *
+ * Gibt null zurück wenn das Plugin nicht installiert ist,
+ * die Datei nicht lesbar ist oder kein Eintrag existiert.
+ * Graceful degradation: kein Fatal Error, kein leerer Meta-Tag.
+ */
+final class MetaKeywordsDescriptionAdapter
+{
+    /**
+     * Liest Meta-Konfiguration für eine Kategorie/Seite aus der
+     * plugin.conf.php des MetaKeywordsDescription-Plugins.
+     *
+     * @param string $cat  Kategoriename (URL-decoded, wie im CMS gespeichert)
+     * @param string $page Seitenname    (URL-decoded, wie im CMS gespeichert)
+     * @return array{description: string, keywords: string}|null
+     *         null wenn Plugin nicht installiert, Datei nicht lesbar,
+     *         Format unbekannt oder kein Eintrag für cat/page vorhanden.
+     */
+    public static function lookup(string $cat, string $page): ?array
+    {
+        // 1. Pfad zur plugin.conf.php aufbauen
+        //    BASE_DIR . 'plugins/' analog zu bestehendem Plugin-Pfad-Muster
+        //    Analog zu isHtaccessValid(): graceful degradation außerhalb CMS-Kontext
+        if (!defined('BASE_DIR')) {
+            return null;
+        }
+        $confPath = BASE_DIR . 'plugins/MetaKeywordsDescription/plugin.conf.php';
+        if (!is_file($confPath) || !is_readable($confPath)) {
+            return null;
+        }
+
+        // 2. Datei lesen und "php die();"-Header überspringen
+        $raw = file_get_contents($confPath);
+        if ($raw === false) {
+            return null;
+        }
+        $start = strpos($raw, 'a:');
+        if ($start === false) {
+            return null; // unbekanntes Format
+        }
+        $raw = substr($raw, $start);
+
+        // 3. Deserialisieren (kein @ – try-catch wie in F8)
+        try {
+            $conf = unserialize($raw, ['allowed_classes' => false]);
+        } catch (\Throwable $e) {
+            return null; // korrupte Datei -> graceful degradation
+        }
+        if (!is_array($conf)) {
+            return null;
+        }
+
+        // 4. Schlüssel bilden: "@=rawurlencoded-cat:page=@"
+        //    $cat: URL-decoded übergeben, rawurlencode() hier anwenden
+        //    $page: moziloCMS 3.0.x übergibt $_GET['page'] ohne URL-Encoding –
+        //           urldecode() am Aufrufer liefert identischen Wert, kein
+        //           rawurlencode() nötig. Annahme gilt für moziloCMS 3.0.x;
+        //           bei Formatänderung ist nur diese Zeile anzupassen.
+        $key = '@=' . rawurlencode($cat) . ':' . $page . '=@';
+        if (!isset($conf[$key]) || !is_array($conf[$key])) {
+            return null;
+        }
+
+        // 5. Werte zurückgeben – unescaped (MetaKeywordsDescription
+        //    speichert roh, htmlspecialchars() obliegt dem Aufrufer)
+        return [
+            'description' => (string) ($conf[$key]['description'] ?? ''),
+            'keywords'    => (string) ($conf[$key]['keywords'] ?? ''),
+        ];
+    }
+}
+
 class _seo_urls extends Plugin {
 
     // -----------------------------------------------------------------------
@@ -93,7 +172,20 @@ class _seo_urls extends Plugin {
             // MetaKeywordsDescription-Kompatibilität:
             // Setzt {WEBSITE_DESCRIPTION} und {WEBSITE_KEYWORDS} im Template,
             // nachdem $_GET['cat'] und $_GET['page'] korrekt gesetzt wurden.
-            self::applyMetaKeywordsDescription();
+            // $_GET['cat'] ist URL-kodiert (CMS-intern); lookup() erwartet URL-decoded.
+            $metaRawCat  = isset($_GET['cat'])   ? (string) $_GET['cat']  : '';
+            $metaRawPage = !empty($_GET['page']) ? (string) $_GET['page'] : '';
+            if ($metaRawPage === '') {
+                global $CatPage;
+                if (isset($CatPage)) {
+                    $firstPage   = $CatPage->get_FirstPageOfCat($metaRawCat);
+                    $metaRawPage = ($firstPage !== false) ? (string) $firstPage : '';
+                }
+            }
+            self::applyMetaKeywordsDescription(
+                urldecode($metaRawCat),
+                urldecode($metaRawPage)
+            );
 
             ob_start(static function(string $html): string {
                 return self::rewriteOutput($html);
@@ -256,80 +348,42 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
     // -----------------------------------------------------------------------
 
     /**
-     * Liest die plugin.conf.php des MetaKeywordsDescription Plugins (falls installiert)
-     * und setzt {WEBSITE_DESCRIPTION} und {WEBSITE_KEYWORDS} im Template.
+     * Setzt {WEBSITE_DESCRIPTION} und {WEBSITE_KEYWORDS} im Template.
      *
-     * Wird nach handleRequest() aufgerufen, wenn $_GET['cat'] und $_GET['page']
-     * bereits korrekt gesetzt sind.
+     * Delegiert das Lesen der plugin.conf.php an MetaKeywordsDescriptionAdapter::lookup().
+     * Wird nach handleRequest() aufgerufen, wenn $cat/$page bereits korrekt
+     * ermittelt wurden.
      *
-     * Ist MetaKeywordsDescription nicht installiert oder kein Eintrag vorhanden,
-     * passiert nichts — die globalen CMS-Einstellungen bleiben unverändert.
+     * @param string $cat  Kategoriename (URL-decoded)
+     * @param string $page Seitenname    (URL-decoded)
      */
-    private static function applyMetaKeywordsDescription() {
-        $pluginDir = defined('PLUGIN_DIR') ? rtrim(PLUGIN_DIR, '/') . '/' : (defined('BASE_DIR') ? BASE_DIR . 'plugins/' : '');
-        if ($pluginDir === '') {
-            return;
-        }
-
-        $confFile = $pluginDir . self::META_PLUGIN_NAME . '/plugin.conf.php';
-        if (!file_exists($confFile)) {
-            return;
-        }
-
-        // Header "php die();" überspringen – serialisierte Daten beginnen immer mit "a:"
-        $raw = file_get_contents($confFile);
-        $pos = strpos($raw, 'a:');
-        if ($pos === false) {
-            return;
-        }
-        $raw = substr($raw, $pos);
-
-        try {
-            $conf = unserialize($raw, ['allowed_classes' => false]);
-        } catch (\Throwable $e) {
-            return; // korrupte Datei → graceful degradation, kein Meta-Tag
-        }
-        if (!is_array($conf)) {
-            return;
-        }
-
-        // Aktuelle Kategorie und Seite aus $_GET lesen.
-        // $_GET['cat'] ist URL-kodiert (z.B. "%C3%9Cber%20unsere%20Kanzlei") –
-        // genau so wie die Keys in plugin.conf.php gespeichert sind.
-        // empty() statt isset() für $page: moziloCMS setzt $_GET['page'] = false
-        // bei Kategorie-Einstiegsseiten ohne explizite Unterseite.
-        $cat  = isset($_GET['cat'])   ? $_GET['cat']  : '';
-        $page = !empty($_GET['page']) ? $_GET['page'] : '';
-
-        // Falls keine Seite gesetzt: erste Seite der Kategorie ermitteln
-        if ($page === '') {
-            global $CatPage;
-            if (isset($CatPage)) {
-                $firstPage = $CatPage->get_FirstPageOfCat($cat);
-                $page      = ($firstPage !== false) ? $firstPage : '';
-            }
-        }
-
-        $key = '@=' . $cat . ':' . $page . '=@';
-
-        if (!isset($conf[$key]) || !is_array($conf[$key])) {
-            return;
-        }
-
-        $setting = $conf[$key];
-
+    private static function applyMetaKeywordsDescription(
+        string $cat,
+        string $page
+    ): void {
         global $template;
-
-        if (!empty($setting['description']) && strlen($setting['description']) > 2) {
-            if (isset($template) && is_string($template)) {
-                $template = str_replace('{WEBSITE_DESCRIPTION}', $setting['description'], $template);
-            }
+        if (!isset($template) || !is_string($template)) {
+            return;
         }
 
-        if (!empty($setting['keywords']) && strlen($setting['keywords']) > 2) {
-            if (isset($template) && is_string($template)) {
-                $template = str_replace('{WEBSITE_KEYWORDS}', $setting['keywords'], $template);
-            }
+        $setting = MetaKeywordsDescriptionAdapter::lookup($cat, $page);
+        if ($setting === null) {
+            return;
+        }
+
+        if (strlen($setting['description']) > 2) {
+            $template = str_replace(
+                '{WEBSITE_DESCRIPTION}',
+                htmlspecialchars($setting['description'], ENT_QUOTES, 'UTF-8'),
+                $template
+            );
+        }
+        if (strlen($setting['keywords']) > 2) {
+            $template = str_replace(
+                '{WEBSITE_KEYWORDS}',
+                htmlspecialchars($setting['keywords'], ENT_QUOTES, 'UTF-8'),
+                $template
+            );
         }
     }
 
@@ -348,11 +402,12 @@ Läuft als <code>plugin_first</code> – vor <code>createGetCatPageFromModRewrit
      * @param int    $code  HTTP-Statuscode (Standard: 301)
      */
     protected static function redirect(string $url, int $code = 301): void {
+        $url = str_replace(["\r", "\n"], '', $url);
         if (self::$redirector !== null) {
             call_user_func(self::$redirector, $url, $code);
             return;
         }
-        header('Location: ' . str_replace(["\r", "\n"], '', $url), true, $code);
+        header('Location: ' . $url, true, $code);
         exit;
     }
 
