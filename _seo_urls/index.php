@@ -133,7 +133,7 @@ class _seo_urls extends Plugin {
     /** Unterstützte Sprachen für Admin-Info. */
     private const SUPPORTED_LANGUAGES = ['de', 'en'];
 
-    const VERSION = 'v1.3.5';
+    const VERSION = 'v1.3.6';
 
     const SYSTEM_PATHS = [
         'admin',
