@@ -132,6 +132,12 @@ class _seo_urls extends Plugin {
     /** Unterstützte Sprachen für Admin-Info. */
     private const SUPPORTED_LANGUAGES = ['deDE', 'enEN'];
 
+    /** Explizite Zuordnung: 2-Zeichen-Prefix → Locale-Code. */
+    private const LANGUAGE_PREFIX_MAP = [
+        'de' => 'deDE',
+        'en' => 'enEN',
+    ];
+
     const VERSION = 'v1.3.7';
 
     const SYSTEM_PATHS = [
@@ -237,8 +243,8 @@ class _seo_urls extends Plugin {
      *
      * Empfängt den rohen Sprachcode aus $ADMIN_CONF (z.B. 'deDE', 'enUS', 'de').
      * Normalisiert auf Kleinschreibung und prüft via str_starts_with() den
-     * 2-Zeichen-Prefix gegen SUPPORTED_LANGUAGES. Liefert beim ersten Treffer
-     * den moziloCMS-Locale-Code (z.B. 'deDE'). Fällt bei unbekannten Locales
+     * Prefix gegen LANGUAGE_PREFIX_MAP. Liefert beim ersten Treffer den
+     * moziloCMS-Locale-Code (z.B. 'deDE'). Fällt bei unbekannten Locales
      * auf DEFAULT_LANGUAGE zurück.
      *
      * @param string|null $code  Sprachcode aus $ADMIN_CONF->get('language')
@@ -248,9 +254,9 @@ class _seo_urls extends Plugin {
     {
         if ($code !== null) {
             $lower = strtolower($code);
-            foreach (self::SUPPORTED_LANGUAGES as $supported) {
-                if (str_starts_with($lower, substr($supported, 0, 2))) {
-                    return $supported;
+            foreach (self::LANGUAGE_PREFIX_MAP as $prefix => $locale) {
+                if (str_starts_with($lower, $prefix)) {
+                    return $locale;
                 }
             }
         }
