@@ -218,12 +218,20 @@ class _seo_urls extends Plugin {
     }
 
     function getConfig() {
+        global $ADMIN_CONF;
+
+        $lang = $this->resolvePluginLanguage(
+            $ADMIN_CONF->get('language') ?? self::DEFAULT_LANGUAGE
+        );
+        $this->admin_lang = new Language(
+            $this->PLUGIN_SELF_DIR . 'sprachen/admin_language_' . $lang . '.txt'
+        );
 
         $config = [];
 
         $config['debug_enabled'] = [
             'type'        => 'checkbox',
-            'description' => 'Debug-Modus aktivieren (Slug-Map unter /?seo_debug=1 abrufbar)'
+            'description' => $this->admin_lang->getLanguageValue('config_debug')
         ];
 
         return $config;
@@ -265,7 +273,12 @@ class _seo_urls extends Plugin {
             $this->PLUGIN_SELF_DIR . 'sprachen/admin_language_' . $lang . '.txt'
         );
 
-        $htaccessStatus = self::checkHtaccess();
+        $htaccessStatus = self::checkHtaccess(
+            $this->admin_lang->getLanguageValue('htaccess_ok'),
+            $this->admin_lang->getLanguageValue('htaccess_missing'),
+            $this->admin_lang->getLanguageValue('htaccess_incomplete'),
+            $this->admin_lang->getLanguageValue('htaccess_required')
+        );
 
         $description =
             $this->admin_lang->getLanguageValue('info_intro') .
@@ -529,13 +542,18 @@ class _seo_urls extends Plugin {
      * Grün = .htaccess korrekt konfiguriert, Rot = Fehler mit spezifischer Meldung.
      * Wird nur in getInfo() aufgerufen.
      */
-    private static function checkHtaccess(): string {
+    private static function checkHtaccess(
+        string $msgOk,
+        string $msgMissing,
+        string $msgIncomplete,
+        string $msgRequired
+    ): string {
         if (!defined('BASE_DIR')) {
             return '';
         }
         $htaccess = BASE_DIR . '.htaccess';
         if (!file_exists($htaccess)) {
-            return '<p style="color:red;font-weight:bold;">&#9888; .htaccess nicht gefunden.</p>';
+            return '<p style="color:red;font-weight:bold;">' . $msgMissing . '</p>';
         }
         $content = file_get_contents($htaccess);
         if ($content === false) {
@@ -545,17 +563,8 @@ class _seo_urls extends Plugin {
         $rules = self::parseHtaccessRules($content);
 
         if (!$rules['hasSitemap'] || !$rules['hasCatchAll']) {
-            return '<p style="color:red;font-weight:bold;">'
-                . '&#9888; SEO-URLs inaktiv: Die .htaccess-Konfiguration ist unvollst&auml;ndig.'
-                . '</p>'
-                . '<p>'
-                . 'Das Plugin bleibt aktiviert und nimmt den Betrieb automatisch wieder auf, '
-                . 'sobald alle erforderlichen Regeln korrekt eingetragen sind &ndash; '
-                . 'kein erneutes Aktivieren im Admin n&ouml;tig. '
-                . 'Regeln bitte vollst&auml;ndig eintragen oder vollst&auml;ndig entfernen &ndash; '
-                . 'eine teilweise Konfiguration kann den Admin-Bereich unzug&auml;nglich machen.'
-                . '</p>'
-                . '<p><b>Erforderliche Eintr&auml;ge in der .htaccess:</b></p>'
+            return '<p style="color:red;font-weight:bold;">' . $msgIncomplete . '</p>'
+                . '<p>' . $msgRequired . '</p>'
                 . '<pre style="background:#f4f4f4;padding:8px;font-size:12px;">'
                 . 'RewriteRule ^sitemap\.xml$ index.php [L,QSA]' . "\n"
                 . 'RewriteCond %{REQUEST_FILENAME} !-f' . "\n"
@@ -564,7 +573,7 @@ class _seo_urls extends Plugin {
                 . '</pre>';
         }
 
-        return '<p style="color:green;">&#10003; .htaccess korrekt konfiguriert.</p>';
+        return '<p style="color:green;">' . $msgOk . '</p>';
     }
 
     // -----------------------------------------------------------------------
