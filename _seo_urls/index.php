@@ -127,10 +127,10 @@ class _seo_urls extends Plugin {
     private ?Language $admin_lang = null;
 
     /** Standard-Sprache für Admin-Info. */
-    private const DEFAULT_LANGUAGE = 'de';
+    private const DEFAULT_LANGUAGE = 'deDE';
 
     /** Unterstützte Sprachen für Admin-Info. */
-    private const SUPPORTED_LANGUAGES = ['de', 'en'];
+    private const SUPPORTED_LANGUAGES = ['deDE', 'enEN'];
 
     const VERSION = 'v1.3.6';
 
@@ -233,19 +233,20 @@ class _seo_urls extends Plugin {
      * Ermittelt den Sprachcode für die Admin-Info-Sprachdatei.
      *
      * Empfängt den rohen Sprachcode aus $ADMIN_CONF (z.B. 'deDE', 'enUS', 'de').
-     * Normalisiert auf Kleinschreibung und prüft via str_starts_with() gegen
-     * SUPPORTED_LANGUAGES. Liefert beim ersten Treffer den Kurzcode (z.B. 'de').
-     * Fällt bei unbekannten Locales auf DEFAULT_LANGUAGE zurück.
+     * Normalisiert auf Kleinschreibung und prüft via str_starts_with() den
+     * 2-Zeichen-Prefix gegen SUPPORTED_LANGUAGES. Liefert beim ersten Treffer
+     * den moziloCMS-Locale-Code (z.B. 'deDE'). Fällt bei unbekannten Locales
+     * auf DEFAULT_LANGUAGE zurück.
      *
      * @param string|null $code  Sprachcode aus $ADMIN_CONF->get('language')
-     * @return string            Kurzcode ('de' oder 'en')
+     * @return string            Locale-Code ('deDE' oder 'enEN')
      */
     private function resolvePluginLanguage(?string $code): string
     {
         if ($code !== null) {
             $lower = strtolower($code);
             foreach (self::SUPPORTED_LANGUAGES as $supported) {
-                if (str_starts_with($lower, $supported)) {
+                if (str_starts_with($lower, substr($supported, 0, 2))) {
                     return $supported;
                 }
             }

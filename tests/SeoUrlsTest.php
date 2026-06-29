@@ -1445,47 +1445,47 @@ class SeoUrlsTest extends TestCase {
     // -----------------------------------------------------------------------
 
     public function testResolvePluginLanguageDeDE(): void {
-        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', 'deDE'));
+        $this->assertSame('deDE', $this->callInstance('resolvePluginLanguage', 'deDE'));
     }
 
     public function testResolvePluginLanguageDeCH(): void {
-        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', 'deCH'));
+        $this->assertSame('deDE', $this->callInstance('resolvePluginLanguage', 'deCH'));
     }
 
     public function testResolvePluginLanguageDeAT(): void {
-        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', 'deAT'));
+        $this->assertSame('deDE', $this->callInstance('resolvePluginLanguage', 'deAT'));
     }
 
     public function testResolvePluginLanguageEnUS(): void {
-        $this->assertSame('en', $this->callInstance('resolvePluginLanguage', 'enUS'));
+        $this->assertSame('enEN', $this->callInstance('resolvePluginLanguage', 'enUS'));
     }
 
     public function testResolvePluginLanguageEnGB(): void {
-        $this->assertSame('en', $this->callInstance('resolvePluginLanguage', 'enGB'));
+        $this->assertSame('enEN', $this->callInstance('resolvePluginLanguage', 'enGB'));
     }
 
     public function testResolvePluginLanguageDe(): void {
-        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', 'de'));
+        $this->assertSame('deDE', $this->callInstance('resolvePluginLanguage', 'de'));
     }
 
     public function testResolvePluginLanguageEn(): void {
-        $this->assertSame('en', $this->callInstance('resolvePluginLanguage', 'en'));
+        $this->assertSame('enEN', $this->callInstance('resolvePluginLanguage', 'en'));
     }
 
     public function testResolvePluginLanguageFrFRFaelltZurueck(): void {
-        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', 'frFR'));
+        $this->assertSame('deDE', $this->callInstance('resolvePluginLanguage', 'frFR'));
     }
 
     public function testResolvePluginLanguageNullFaelltZurueck(): void {
-        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', null));
+        $this->assertSame('deDE', $this->callInstance('resolvePluginLanguage', null));
     }
 
     public function testResolvePluginLanguageLeerFaelltZurueck(): void {
-        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', ''));
+        $this->assertSame('deDE', $this->callInstance('resolvePluginLanguage', ''));
     }
 
     public function testResolvePluginLanguageGrossschreibungWirdNormalisiert(): void {
-        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', 'DEDE'));
+        $this->assertSame('deDE', $this->callInstance('resolvePluginLanguage', 'DEDE'));
     }
 
     // -----------------------------------------------------------------------
