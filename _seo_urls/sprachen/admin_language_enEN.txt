@@ -6,6 +6,7 @@ info_features = <b>Features</b><table>  <tr><td><b>Umlaut replacement</b></td><t
 info_examples = <b>Examples</b><table>  <tr><td>Original path</td><td>Slug URL</td></tr>  <tr><td><code>/Über Uns/</code></td><td><code>/ueber-uns/</code></td></tr>  <tr><td><code>/Über Uns/Unser Team/</code></td><td><code>/ueber-uns/unser-team/</code></td></tr>  <tr><td><code>/Häufige Fragen/</code></td><td><code>/haeufige-fragen/</code></td></tr></table>
 htaccess_ok = &#10003; .htaccess correctly configured.
 htaccess_missing = &#9888; .htaccess not found.
-htaccess_incomplete = &#9888; SEO URLs inactive: The .htaccess configuration is incomplete.</p><p>The plugin remains active and will automatically resume operation once all required rules are correctly added &ndash; no re-activation in the admin required. Please add rules completely or remove them completely &ndash; a partial configuration can make the admin area inaccessible.
+htaccess_incomplete_header = &#9888; SEO URLs inactive: The .htaccess configuration is incomplete.
+htaccess_incomplete_body = The plugin remains active and will automatically resume operation once all required rules are correctly added &ndash; no re-activation in the admin required. Please add rules completely or remove them completely &ndash; a partial configuration can make the admin area inaccessible.
 htaccess_required = <b>Required entries in .htaccess:</b>
 config_debug = Enable debug mode (slug map available at /?seo_debug=1)

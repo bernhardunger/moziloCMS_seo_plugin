@@ -1504,7 +1504,7 @@ class SeoUrlsTest extends TestCase {
         $keys = self::parseLanguageFile(
             __DIR__ . '/../_seo_urls/sprachen/admin_language_deDE.txt'
         );
-        foreach (['htaccess_ok', 'htaccess_missing', 'htaccess_incomplete', 'htaccess_required', 'config_debug'] as $key) {
+        foreach (['htaccess_ok', 'htaccess_missing', 'htaccess_incomplete_header', 'htaccess_incomplete_body', 'htaccess_required', 'config_debug'] as $key) {
             $this->assertArrayHasKey($key, $keys, "Key '{$key}' fehlt in admin_language_deDE.txt");
             $this->assertNotEmpty($keys[$key],    "Key '{$key}' ist leer in admin_language_deDE.txt");
         }
@@ -1514,7 +1514,7 @@ class SeoUrlsTest extends TestCase {
         $keys = self::parseLanguageFile(
             __DIR__ . '/../_seo_urls/sprachen/admin_language_enEN.txt'
         );
-        foreach (['htaccess_ok', 'htaccess_missing', 'htaccess_incomplete', 'htaccess_required', 'config_debug'] as $key) {
+        foreach (['htaccess_ok', 'htaccess_missing', 'htaccess_incomplete_header', 'htaccess_incomplete_body', 'htaccess_required', 'config_debug'] as $key) {
             $this->assertArrayHasKey($key, $keys, "Key '{$key}' fehlt in admin_language_enEN.txt");
             $this->assertNotEmpty($keys[$key],    "Key '{$key}' ist leer in admin_language_enEN.txt");
         }
@@ -1534,17 +1534,20 @@ class SeoUrlsTest extends TestCase {
         mkdir($tmpBase);
         define('BASE_DIR', $tmpBase);
 
-        $result = self::callStatic('checkHtaccess', 'MSG_OK', 'MSG_MISSING', 'MSG_INCOMPLETE', 'MSG_REQUIRED');
+        try {
+            $result = self::callStatic('checkHtaccess', 'MSG_OK', 'MSG_MISSING', 'MSG_INCOMPLETE_HEADER', 'MSG_INCOMPLETE_BODY', 'MSG_REQUIRED');
 
-        rmdir($tmpBase);
-
-        $this->assertStringContainsString('MSG_MISSING',       $result);
-        $this->assertStringNotContainsString('MSG_OK',         $result);
-        $this->assertStringNotContainsString('MSG_INCOMPLETE', $result);
+            $this->assertStringContainsString('MSG_MISSING',                  $result);
+            $this->assertStringNotContainsString('MSG_OK',                    $result);
+            $this->assertStringNotContainsString('MSG_INCOMPLETE_HEADER',     $result);
+            $this->assertStringNotContainsString('MSG_INCOMPLETE_BODY',       $result);
+        } finally {
+            rmdir($tmpBase);
+        }
     }
 
     /**
-     * .htaccess vorhanden, aber Catch-All-Regeln fehlen → Rückgabe enthält msgIncomplete + msgRequired.
+     * .htaccess vorhanden, aber Regeln fehlen → Rückgabe enthält msgIncompleteHeader + msgIncompleteBody + msgRequired.
      */
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
@@ -1554,15 +1557,18 @@ class SeoUrlsTest extends TestCase {
         file_put_contents($tmpBase . '.htaccess', 'RewriteEngine On');
         define('BASE_DIR', $tmpBase);
 
-        $result = self::callStatic('checkHtaccess', 'MSG_OK', 'MSG_MISSING', 'MSG_INCOMPLETE', 'MSG_REQUIRED');
+        try {
+            $result = self::callStatic('checkHtaccess', 'MSG_OK', 'MSG_MISSING', 'MSG_INCOMPLETE_HEADER', 'MSG_INCOMPLETE_BODY', 'MSG_REQUIRED');
 
-        unlink($tmpBase . '.htaccess');
-        rmdir($tmpBase);
-
-        $this->assertStringContainsString('MSG_INCOMPLETE',    $result);
-        $this->assertStringContainsString('MSG_REQUIRED',      $result);
-        $this->assertStringNotContainsString('MSG_OK',         $result);
-        $this->assertStringNotContainsString('MSG_MISSING',    $result);
+            $this->assertStringContainsString('MSG_INCOMPLETE_HEADER',    $result);
+            $this->assertStringContainsString('MSG_INCOMPLETE_BODY',      $result);
+            $this->assertStringContainsString('MSG_REQUIRED',             $result);
+            $this->assertStringNotContainsString('MSG_OK',                $result);
+            $this->assertStringNotContainsString('MSG_MISSING',           $result);
+        } finally {
+            @unlink($tmpBase . '.htaccess');
+            rmdir($tmpBase);
+        }
     }
 
     /**
@@ -1576,14 +1582,17 @@ class SeoUrlsTest extends TestCase {
         file_put_contents($tmpBase . '.htaccess', self::htaccessFull());
         define('BASE_DIR', $tmpBase);
 
-        $result = self::callStatic('checkHtaccess', 'MSG_OK', 'MSG_MISSING', 'MSG_INCOMPLETE', 'MSG_REQUIRED');
+        try {
+            $result = self::callStatic('checkHtaccess', 'MSG_OK', 'MSG_MISSING', 'MSG_INCOMPLETE_HEADER', 'MSG_INCOMPLETE_BODY', 'MSG_REQUIRED');
 
-        unlink($tmpBase . '.htaccess');
-        rmdir($tmpBase);
-
-        $this->assertStringContainsString('MSG_OK',            $result);
-        $this->assertStringNotContainsString('MSG_MISSING',    $result);
-        $this->assertStringNotContainsString('MSG_INCOMPLETE', $result);
+            $this->assertStringContainsString('MSG_OK',                       $result);
+            $this->assertStringNotContainsString('MSG_MISSING',               $result);
+            $this->assertStringNotContainsString('MSG_INCOMPLETE_HEADER',     $result);
+            $this->assertStringNotContainsString('MSG_INCOMPLETE_BODY',       $result);
+        } finally {
+            @unlink($tmpBase . '.htaccess');
+            rmdir($tmpBase);
+        }
     }
 
     // -----------------------------------------------------------------------

@@ -6,6 +6,7 @@ info_features = <b>Funktionen</b><table>  <tr><td><b>Umlaut-Ersetzung</b></td><t
 info_examples = <b>Beispiele</b><table>  <tr><td>Original-Pfad</td><td>Slug-URL</td></tr>  <tr><td><code>/Über Uns/</code></td><td><code>/ueber-uns/</code></td></tr>  <tr><td><code>/Über Uns/Unser Team/</code></td><td><code>/ueber-uns/unser-team/</code></td></tr>  <tr><td><code>/Häufige Fragen/</code></td><td><code>/haeufige-fragen/</code></td></tr></table>
 htaccess_ok = &#10003; .htaccess korrekt konfiguriert.
 htaccess_missing = &#9888; .htaccess nicht gefunden.
-htaccess_incomplete = &#9888; SEO-URLs inaktiv: Die .htaccess-Konfiguration ist unvollst&auml;ndig.</p><p>Das Plugin bleibt aktiviert und nimmt den Betrieb automatisch wieder auf, sobald alle erforderlichen Regeln korrekt eingetragen sind &ndash; kein erneutes Aktivieren im Admin n&ouml;tig. Regeln bitte vollst&auml;ndig eintragen oder vollst&auml;ndig entfernen &ndash; eine teilweise Konfiguration kann den Admin-Bereich unzug&auml;nglich machen.
+htaccess_incomplete_header = &#9888; SEO-URLs inaktiv: Die .htaccess-Konfiguration ist unvollst&auml;ndig.
+htaccess_incomplete_body = Das Plugin bleibt aktiviert und nimmt den Betrieb automatisch wieder auf, sobald alle erforderlichen Regeln korrekt eingetragen sind &ndash; kein erneutes Aktivieren im Admin n&ouml;tig. Regeln bitte vollst&auml;ndig eintragen oder vollst&auml;ndig entfernen &ndash; eine teilweise Konfiguration kann den Admin-Bereich unzug&auml;nglich machen.
 htaccess_required = <b>Erforderliche Eintr&auml;ge in der .htaccess:</b>
 config_debug = Debug-Modus aktivieren (Slug-Map unter /?seo_debug=1 abrufbar)

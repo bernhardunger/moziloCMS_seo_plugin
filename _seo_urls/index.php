@@ -219,15 +219,10 @@ class _seo_urls extends Plugin {
 
     function getConfig() {
         global $ADMIN_CONF;
-
-        $lang = $this->resolvePluginLanguage(
-            $ADMIN_CONF->get('language') ?? self::DEFAULT_LANGUAGE
-        );
-        $this->admin_lang = new Language(
-            $this->PLUGIN_SELF_DIR . 'sprachen/admin_language_' . $lang . '.txt'
-        );
-
         $config = [];
+        if (!isset($ADMIN_CONF)) { return $config; }
+
+        $this->initAdminLang();
 
         $config['debug_enabled'] = [
             'type'        => 'checkbox',
@@ -262,21 +257,28 @@ class _seo_urls extends Plugin {
         return self::DEFAULT_LANGUAGE;
     }
 
-    function getInfo()
+    private function initAdminLang(): void
     {
         global $ADMIN_CONF;
-
         $lang = $this->resolvePluginLanguage(
             $ADMIN_CONF->get('language') ?? self::DEFAULT_LANGUAGE
         );
         $this->admin_lang = new Language(
             $this->PLUGIN_SELF_DIR . 'sprachen/admin_language_' . $lang . '.txt'
         );
+    }
+
+    function getInfo()
+    {
+        global $ADMIN_CONF;
+
+        $this->initAdminLang();
 
         $htaccessStatus = self::checkHtaccess(
             $this->admin_lang->getLanguageValue('htaccess_ok'),
             $this->admin_lang->getLanguageValue('htaccess_missing'),
-            $this->admin_lang->getLanguageValue('htaccess_incomplete'),
+            $this->admin_lang->getLanguageValue('htaccess_incomplete_header'),
+            $this->admin_lang->getLanguageValue('htaccess_incomplete_body'),
             $this->admin_lang->getLanguageValue('htaccess_required')
         );
 
@@ -545,7 +547,8 @@ class _seo_urls extends Plugin {
     private static function checkHtaccess(
         string $msgOk,
         string $msgMissing,
-        string $msgIncomplete,
+        string $msgIncompleteHeader,
+        string $msgIncompleteBody,
         string $msgRequired
     ): string {
         if (!defined('BASE_DIR')) {
@@ -563,7 +566,8 @@ class _seo_urls extends Plugin {
         $rules = self::parseHtaccessRules($content);
 
         if (!$rules['hasSitemap'] || !$rules['hasCatchAll']) {
-            return '<p style="color:red;font-weight:bold;">' . $msgIncomplete . '</p>'
+            return '<p style="color:red;font-weight:bold;">' . $msgIncompleteHeader . '</p>'
+                . '<p>' . $msgIncompleteBody . '</p>'
                 . '<p>' . $msgRequired . '</p>'
                 . '<pre style="background:#f4f4f4;padding:8px;font-size:12px;">'
                 . 'RewriteRule ^sitemap\.xml$ index.php [L,QSA]' . "\n"

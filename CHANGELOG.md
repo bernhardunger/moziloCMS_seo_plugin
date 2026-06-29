@@ -4,7 +4,7 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
 
 ---
 
-## [1.3.7] - 2026-06-29
+## [v1.3.7] – 2026-06-29
 
 ### Geändert
 - Locale-Schema der Admin-Sprachdateien auf moziloCMS-Konvention umgestellt:
