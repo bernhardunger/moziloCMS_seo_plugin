@@ -10,4 +10,5 @@ phpunit.xml     export-ignore
 .gitattributes  export-ignore
 _seo_urls/seo_urls_projekt_kontext.md export-ignore
 _seo_urls/CLAUDE.md export-ignore
+.claude/         export-ignore
 
