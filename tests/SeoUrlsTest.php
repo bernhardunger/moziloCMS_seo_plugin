@@ -1488,6 +1488,14 @@ class SeoUrlsTest extends TestCase {
         $this->assertSame('deDE', $this->callInstance('resolvePluginLanguage', 'DEDE'));
     }
 
+    public function testResolvePluginLanguageEnEN(): void {
+        $this->assertSame('enEN', $this->callInstance('resolvePluginLanguage', 'enEN'));
+    }
+
+    public function testResolvePluginLanguageEnENGrossschreibungWirdNormalisiert(): void {
+        $this->assertSame('enEN', $this->callInstance('resolvePluginLanguage', 'ENEN'));
+    }
+
     // -----------------------------------------------------------------------
     // Reflection- und Injektions-Hilfsmethoden
     // -----------------------------------------------------------------------
