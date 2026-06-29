@@ -1497,6 +1497,96 @@ class SeoUrlsTest extends TestCase {
     }
 
     // -----------------------------------------------------------------------
+    // Sprachdatei-Vollständigkeit (Finding 20: neue Keys)
+    // -----------------------------------------------------------------------
+
+    public function testSprachdateiDeDEHatAlleKeysF20(): void {
+        $keys = self::parseLanguageFile(
+            __DIR__ . '/../_seo_urls/sprachen/admin_language_deDE.txt'
+        );
+        foreach (['htaccess_ok', 'htaccess_missing', 'htaccess_incomplete', 'htaccess_required', 'config_debug'] as $key) {
+            $this->assertArrayHasKey($key, $keys, "Key '{$key}' fehlt in admin_language_deDE.txt");
+            $this->assertNotEmpty($keys[$key],    "Key '{$key}' ist leer in admin_language_deDE.txt");
+        }
+    }
+
+    public function testSprachdateiEnENHatAlleKeysF20(): void {
+        $keys = self::parseLanguageFile(
+            __DIR__ . '/../_seo_urls/sprachen/admin_language_enEN.txt'
+        );
+        foreach (['htaccess_ok', 'htaccess_missing', 'htaccess_incomplete', 'htaccess_required', 'config_debug'] as $key) {
+            $this->assertArrayHasKey($key, $keys, "Key '{$key}' fehlt in admin_language_enEN.txt");
+            $this->assertNotEmpty($keys[$key],    "Key '{$key}' ist leer in admin_language_enEN.txt");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // checkHtaccess() – parametrisierte Statusmeldungen (Finding 20)
+    // -----------------------------------------------------------------------
+
+    /**
+     * .htaccess fehlt → Rückgabe enthält msgMissing.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testCheckHtaccessDateiFehlt(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        mkdir($tmpBase);
+        define('BASE_DIR', $tmpBase);
+
+        $result = self::callStatic('checkHtaccess', 'MSG_OK', 'MSG_MISSING', 'MSG_INCOMPLETE', 'MSG_REQUIRED');
+
+        rmdir($tmpBase);
+
+        $this->assertStringContainsString('MSG_MISSING',       $result);
+        $this->assertStringNotContainsString('MSG_OK',         $result);
+        $this->assertStringNotContainsString('MSG_INCOMPLETE', $result);
+    }
+
+    /**
+     * .htaccess vorhanden, aber Catch-All-Regeln fehlen → Rückgabe enthält msgIncomplete + msgRequired.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testCheckHtaccessRegelnUnvollstaendig(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        mkdir($tmpBase);
+        file_put_contents($tmpBase . '.htaccess', 'RewriteEngine On');
+        define('BASE_DIR', $tmpBase);
+
+        $result = self::callStatic('checkHtaccess', 'MSG_OK', 'MSG_MISSING', 'MSG_INCOMPLETE', 'MSG_REQUIRED');
+
+        unlink($tmpBase . '.htaccess');
+        rmdir($tmpBase);
+
+        $this->assertStringContainsString('MSG_INCOMPLETE',    $result);
+        $this->assertStringContainsString('MSG_REQUIRED',      $result);
+        $this->assertStringNotContainsString('MSG_OK',         $result);
+        $this->assertStringNotContainsString('MSG_MISSING',    $result);
+    }
+
+    /**
+     * .htaccess mit allen erforderlichen Regeln → Rückgabe enthält msgOk.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testCheckHtaccessKorrektKonfiguriert(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        mkdir($tmpBase);
+        file_put_contents($tmpBase . '.htaccess', self::htaccessFull());
+        define('BASE_DIR', $tmpBase);
+
+        $result = self::callStatic('checkHtaccess', 'MSG_OK', 'MSG_MISSING', 'MSG_INCOMPLETE', 'MSG_REQUIRED');
+
+        unlink($tmpBase . '.htaccess');
+        rmdir($tmpBase);
+
+        $this->assertStringContainsString('MSG_OK',            $result);
+        $this->assertStringNotContainsString('MSG_MISSING',    $result);
+        $this->assertStringNotContainsString('MSG_INCOMPLETE', $result);
+    }
+
+    // -----------------------------------------------------------------------
     // Reflection- und Injektions-Hilfsmethoden
     // -----------------------------------------------------------------------
 
@@ -1554,6 +1644,19 @@ class SeoUrlsTest extends TestCase {
             $pageToSlug[urldecode($catNameEnc)][$pageNameDec] = $pageSlug;
         }
         self::setStaticProp('pageToSlug', $pageToSlug);
+    }
+
+    private static function parseLanguageFile(string $path): array {
+        $result = [];
+        foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+            if (str_starts_with(ltrim($line), '#')) {
+                continue;
+            }
+            if (preg_match('/^(\w+)\s*=\s*(.+)$/', $line, $m)) {
+                $result[$m[1]] = trim($m[2]);
+            }
+        }
+        return $result;
     }
 
     /**
