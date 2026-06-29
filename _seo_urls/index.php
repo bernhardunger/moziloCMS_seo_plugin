@@ -127,12 +127,18 @@ class _seo_urls extends Plugin {
     private ?Language $admin_lang = null;
 
     /** Standard-Sprache für Admin-Info. */
-    private const DEFAULT_LANGUAGE = 'de';
+    private const DEFAULT_LANGUAGE = 'deDE';
 
     /** Unterstützte Sprachen für Admin-Info. */
-    private const SUPPORTED_LANGUAGES = ['de', 'en'];
+    private const SUPPORTED_LANGUAGES = ['deDE', 'enEN'];
 
-    const VERSION = 'v1.3.6';
+    /** Explizite Zuordnung: 2-Zeichen-Prefix → Locale-Code. */
+    private const LANGUAGE_PREFIX_MAP = [
+        'de' => 'deDE',
+        'en' => 'enEN',
+    ];
+
+    const VERSION = 'v1.3.7';
 
     const SYSTEM_PATHS = [
         'admin',
@@ -218,12 +224,15 @@ class _seo_urls extends Plugin {
     }
 
     function getConfig() {
-
+        global $ADMIN_CONF;
         $config = [];
+        if (!isset($ADMIN_CONF)) { return $config; }
+
+        $this->initAdminLang();
 
         $config['debug_enabled'] = [
             'type'        => 'checkbox',
-            'description' => 'Debug-Modus aktivieren (Slug-Map unter /?seo_debug=1 abrufbar)'
+            'description' => $this->admin_lang->getLanguageValue('config_debug')
         ];
 
         return $config;
@@ -233,38 +242,51 @@ class _seo_urls extends Plugin {
      * Ermittelt den Sprachcode für die Admin-Info-Sprachdatei.
      *
      * Empfängt den rohen Sprachcode aus $ADMIN_CONF (z.B. 'deDE', 'enUS', 'de').
-     * Normalisiert auf Kleinschreibung und prüft via str_starts_with() gegen
-     * SUPPORTED_LANGUAGES. Liefert beim ersten Treffer den Kurzcode (z.B. 'de').
-     * Fällt bei unbekannten Locales auf DEFAULT_LANGUAGE zurück.
+     * Normalisiert auf Kleinschreibung und prüft via str_starts_with() den
+     * Prefix gegen LANGUAGE_PREFIX_MAP. Liefert beim ersten Treffer den
+     * moziloCMS-Locale-Code (z.B. 'deDE'). Fällt bei unbekannten Locales
+     * auf DEFAULT_LANGUAGE zurück.
      *
      * @param string|null $code  Sprachcode aus $ADMIN_CONF->get('language')
-     * @return string            Kurzcode ('de' oder 'en')
+     * @return string            Locale-Code ('deDE' oder 'enEN')
      */
     private function resolvePluginLanguage(?string $code): string
     {
         if ($code !== null) {
             $lower = strtolower($code);
-            foreach (self::SUPPORTED_LANGUAGES as $supported) {
-                if (str_starts_with($lower, $supported)) {
-                    return $supported;
+            foreach (self::LANGUAGE_PREFIX_MAP as $prefix => $locale) {
+                if (str_starts_with($lower, $prefix)) {
+                    return $locale;
                 }
             }
         }
         return self::DEFAULT_LANGUAGE;
     }
 
-    function getInfo()
+    private function initAdminLang(): void
     {
         global $ADMIN_CONF;
-
         $lang = $this->resolvePluginLanguage(
             $ADMIN_CONF->get('language') ?? self::DEFAULT_LANGUAGE
         );
         $this->admin_lang = new Language(
             $this->PLUGIN_SELF_DIR . 'sprachen/admin_language_' . $lang . '.txt'
         );
+    }
 
-        $htaccessStatus = self::checkHtaccess();
+    function getInfo()
+    {
+        global $ADMIN_CONF;
+
+        $this->initAdminLang();
+
+        $htaccessStatus = self::checkHtaccess(
+            $this->admin_lang->getLanguageValue('htaccess_ok'),
+            $this->admin_lang->getLanguageValue('htaccess_missing'),
+            $this->admin_lang->getLanguageValue('htaccess_incomplete_header'),
+            $this->admin_lang->getLanguageValue('htaccess_incomplete_body'),
+            $this->admin_lang->getLanguageValue('htaccess_required')
+        );
 
         $description =
             $this->admin_lang->getLanguageValue('info_intro') .
@@ -528,13 +550,19 @@ class _seo_urls extends Plugin {
      * Grün = .htaccess korrekt konfiguriert, Rot = Fehler mit spezifischer Meldung.
      * Wird nur in getInfo() aufgerufen.
      */
-    private static function checkHtaccess(): string {
+    private static function checkHtaccess(
+        string $msgOk,
+        string $msgMissing,
+        string $msgIncompleteHeader,
+        string $msgIncompleteBody,
+        string $msgRequired
+    ): string {
         if (!defined('BASE_DIR')) {
             return '';
         }
         $htaccess = BASE_DIR . '.htaccess';
         if (!file_exists($htaccess)) {
-            return '<p style="color:red;font-weight:bold;">&#9888; .htaccess nicht gefunden.</p>';
+            return '<p style="color:red;font-weight:bold;">' . $msgMissing . '</p>';
         }
         $content = file_get_contents($htaccess);
         if ($content === false) {
@@ -544,17 +572,9 @@ class _seo_urls extends Plugin {
         $rules = self::parseHtaccessRules($content);
 
         if (!$rules['hasSitemap'] || !$rules['hasCatchAll']) {
-            return '<p style="color:red;font-weight:bold;">'
-                . '&#9888; SEO-URLs inaktiv: Die .htaccess-Konfiguration ist unvollst&auml;ndig.'
-                . '</p>'
-                . '<p>'
-                . 'Das Plugin bleibt aktiviert und nimmt den Betrieb automatisch wieder auf, '
-                . 'sobald alle erforderlichen Regeln korrekt eingetragen sind &ndash; '
-                . 'kein erneutes Aktivieren im Admin n&ouml;tig. '
-                . 'Regeln bitte vollst&auml;ndig eintragen oder vollst&auml;ndig entfernen &ndash; '
-                . 'eine teilweise Konfiguration kann den Admin-Bereich unzug&auml;nglich machen.'
-                . '</p>'
-                . '<p><b>Erforderliche Eintr&auml;ge in der .htaccess:</b></p>'
+            return '<p style="color:red;font-weight:bold;">' . $msgIncompleteHeader . '</p>'
+                . '<p>' . $msgIncompleteBody . '</p>'
+                . '<p>' . $msgRequired . '</p>'
                 . '<pre style="background:#f4f4f4;padding:8px;font-size:12px;">'
                 . 'RewriteRule ^sitemap\.xml$ index.php [L,QSA]' . "\n"
                 . 'RewriteCond %{REQUEST_FILENAME} !-f' . "\n"
@@ -563,7 +583,7 @@ class _seo_urls extends Plugin {
                 . '</pre>';
         }
 
-        return '<p style="color:green;">&#10003; .htaccess korrekt konfiguriert.</p>';
+        return '<p style="color:green;">' . $msgOk . '</p>';
     }
 
     // -----------------------------------------------------------------------

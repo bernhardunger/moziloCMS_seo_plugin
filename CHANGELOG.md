@@ -4,6 +4,23 @@ Alle relevanten Änderungen werden in dieser Datei dokumentiert.
 
 ---
 
+## [v1.3.7] – 2026-06-29
+
+### Geändert
+- Locale-Schema der Admin-Sprachdateien auf moziloCMS-Konvention umgestellt:
+  `admin_language_de.txt` → `admin_language_deDE.txt`,
+  `admin_language_en.txt` → `admin_language_enEN.txt`
+
+### Verbessert
+- Admin-Info: Statusmeldungen der .htaccess-Prüfung und Debug-Konfiguration
+  in Sprachdateien ausgelagert (vollständige i18n-Abdeckung der Admin-Anzeige)
+
+### Behoben
+- Admin-Info: `<h4>`-Überschriften durch `<b>` ersetzt (HTML-Validator-Warnung
+  wegen fehlender Überschriften-Hierarchie im Admin-Kontext)
+
+---
+
 ## [v1.3.6] – 2026-06-28
 
 ### Verbessert

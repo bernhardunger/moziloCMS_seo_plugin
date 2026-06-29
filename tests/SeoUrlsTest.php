@@ -1445,47 +1445,154 @@ class SeoUrlsTest extends TestCase {
     // -----------------------------------------------------------------------
 
     public function testResolvePluginLanguageDeDE(): void {
-        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', 'deDE'));
+        $this->assertSame('deDE', $this->callInstance('resolvePluginLanguage', 'deDE'));
     }
 
     public function testResolvePluginLanguageDeCH(): void {
-        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', 'deCH'));
+        $this->assertSame('deDE', $this->callInstance('resolvePluginLanguage', 'deCH'));
     }
 
     public function testResolvePluginLanguageDeAT(): void {
-        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', 'deAT'));
+        $this->assertSame('deDE', $this->callInstance('resolvePluginLanguage', 'deAT'));
     }
 
     public function testResolvePluginLanguageEnUS(): void {
-        $this->assertSame('en', $this->callInstance('resolvePluginLanguage', 'enUS'));
+        $this->assertSame('enEN', $this->callInstance('resolvePluginLanguage', 'enUS'));
     }
 
     public function testResolvePluginLanguageEnGB(): void {
-        $this->assertSame('en', $this->callInstance('resolvePluginLanguage', 'enGB'));
+        $this->assertSame('enEN', $this->callInstance('resolvePluginLanguage', 'enGB'));
     }
 
     public function testResolvePluginLanguageDe(): void {
-        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', 'de'));
+        $this->assertSame('deDE', $this->callInstance('resolvePluginLanguage', 'de'));
     }
 
     public function testResolvePluginLanguageEn(): void {
-        $this->assertSame('en', $this->callInstance('resolvePluginLanguage', 'en'));
+        $this->assertSame('enEN', $this->callInstance('resolvePluginLanguage', 'en'));
     }
 
     public function testResolvePluginLanguageFrFRFaelltZurueck(): void {
-        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', 'frFR'));
+        $this->assertSame('deDE', $this->callInstance('resolvePluginLanguage', 'frFR'));
     }
 
     public function testResolvePluginLanguageNullFaelltZurueck(): void {
-        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', null));
+        $this->assertSame('deDE', $this->callInstance('resolvePluginLanguage', null));
     }
 
     public function testResolvePluginLanguageLeerFaelltZurueck(): void {
-        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', ''));
+        $this->assertSame('deDE', $this->callInstance('resolvePluginLanguage', ''));
     }
 
     public function testResolvePluginLanguageGrossschreibungWirdNormalisiert(): void {
-        $this->assertSame('de', $this->callInstance('resolvePluginLanguage', 'DEDE'));
+        $this->assertSame('deDE', $this->callInstance('resolvePluginLanguage', 'DEDE'));
+    }
+
+    public function testResolvePluginLanguageEnEN(): void {
+        $this->assertSame('enEN', $this->callInstance('resolvePluginLanguage', 'enEN'));
+    }
+
+    public function testResolvePluginLanguageEnENGrossschreibungWirdNormalisiert(): void {
+        $this->assertSame('enEN', $this->callInstance('resolvePluginLanguage', 'ENEN'));
+    }
+
+    // -----------------------------------------------------------------------
+    // Sprachdatei-Vollständigkeit (Finding 20: neue Keys)
+    // -----------------------------------------------------------------------
+
+    public function testSprachdateiDeDEHatAlleKeysF20(): void {
+        $keys = self::parseLanguageFile(
+            __DIR__ . '/../_seo_urls/sprachen/admin_language_deDE.txt'
+        );
+        foreach (['htaccess_ok', 'htaccess_missing', 'htaccess_incomplete_header', 'htaccess_incomplete_body', 'htaccess_required', 'config_debug'] as $key) {
+            $this->assertArrayHasKey($key, $keys, "Key '{$key}' fehlt in admin_language_deDE.txt");
+            $this->assertNotEmpty($keys[$key],    "Key '{$key}' ist leer in admin_language_deDE.txt");
+        }
+    }
+
+    public function testSprachdateiEnENHatAlleKeysF20(): void {
+        $keys = self::parseLanguageFile(
+            __DIR__ . '/../_seo_urls/sprachen/admin_language_enEN.txt'
+        );
+        foreach (['htaccess_ok', 'htaccess_missing', 'htaccess_incomplete_header', 'htaccess_incomplete_body', 'htaccess_required', 'config_debug'] as $key) {
+            $this->assertArrayHasKey($key, $keys, "Key '{$key}' fehlt in admin_language_enEN.txt");
+            $this->assertNotEmpty($keys[$key],    "Key '{$key}' ist leer in admin_language_enEN.txt");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // checkHtaccess() – parametrisierte Statusmeldungen (Finding 20)
+    // -----------------------------------------------------------------------
+
+    /**
+     * .htaccess fehlt → Rückgabe enthält msgMissing.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testCheckHtaccessDateiFehlt(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        mkdir($tmpBase);
+        define('BASE_DIR', $tmpBase);
+
+        try {
+            $result = self::callStatic('checkHtaccess', 'MSG_OK', 'MSG_MISSING', 'MSG_INCOMPLETE_HEADER', 'MSG_INCOMPLETE_BODY', 'MSG_REQUIRED');
+
+            $this->assertStringContainsString('MSG_MISSING',                  $result);
+            $this->assertStringNotContainsString('MSG_OK',                    $result);
+            $this->assertStringNotContainsString('MSG_INCOMPLETE_HEADER',     $result);
+            $this->assertStringNotContainsString('MSG_INCOMPLETE_BODY',       $result);
+        } finally {
+            rmdir($tmpBase);
+        }
+    }
+
+    /**
+     * .htaccess vorhanden, aber Regeln fehlen → Rückgabe enthält msgIncompleteHeader + msgIncompleteBody + msgRequired.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testCheckHtaccessRegelnUnvollstaendig(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        mkdir($tmpBase);
+        file_put_contents($tmpBase . '.htaccess', 'RewriteEngine On');
+        define('BASE_DIR', $tmpBase);
+
+        try {
+            $result = self::callStatic('checkHtaccess', 'MSG_OK', 'MSG_MISSING', 'MSG_INCOMPLETE_HEADER', 'MSG_INCOMPLETE_BODY', 'MSG_REQUIRED');
+
+            $this->assertStringContainsString('MSG_INCOMPLETE_HEADER',    $result);
+            $this->assertStringContainsString('MSG_INCOMPLETE_BODY',      $result);
+            $this->assertStringContainsString('MSG_REQUIRED',             $result);
+            $this->assertStringNotContainsString('MSG_OK',                $result);
+            $this->assertStringNotContainsString('MSG_MISSING',           $result);
+        } finally {
+            @unlink($tmpBase . '.htaccess');
+            rmdir($tmpBase);
+        }
+    }
+
+    /**
+     * .htaccess mit allen erforderlichen Regeln → Rückgabe enthält msgOk.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testCheckHtaccessKorrektKonfiguriert(): void {
+        $tmpBase = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'seo_urls_' . uniqid() . DIRECTORY_SEPARATOR;
+        mkdir($tmpBase);
+        file_put_contents($tmpBase . '.htaccess', self::htaccessFull());
+        define('BASE_DIR', $tmpBase);
+
+        try {
+            $result = self::callStatic('checkHtaccess', 'MSG_OK', 'MSG_MISSING', 'MSG_INCOMPLETE_HEADER', 'MSG_INCOMPLETE_BODY', 'MSG_REQUIRED');
+
+            $this->assertStringContainsString('MSG_OK',                       $result);
+            $this->assertStringNotContainsString('MSG_MISSING',               $result);
+            $this->assertStringNotContainsString('MSG_INCOMPLETE_HEADER',     $result);
+            $this->assertStringNotContainsString('MSG_INCOMPLETE_BODY',       $result);
+        } finally {
+            @unlink($tmpBase . '.htaccess');
+            rmdir($tmpBase);
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -1546,6 +1653,19 @@ class SeoUrlsTest extends TestCase {
             $pageToSlug[urldecode($catNameEnc)][$pageNameDec] = $pageSlug;
         }
         self::setStaticProp('pageToSlug', $pageToSlug);
+    }
+
+    private static function parseLanguageFile(string $path): array {
+        $result = [];
+        foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+            if (str_starts_with(ltrim($line), '#')) {
+                continue;
+            }
+            if (preg_match('/^(\w+)\s*=\s*(.+)$/', $line, $m)) {
+                $result[$m[1]] = trim($m[2]);
+            }
+        }
+        return $result;
     }
 
     /**
